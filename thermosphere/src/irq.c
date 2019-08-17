@@ -130,6 +130,11 @@ void initIrq(void)
     recursiveSpinlockUnlockRestoreIrq(&g_irqManager.lock, flags);
 }
 
+bool isGuestIrq(u16 id)
+{
+    return true;
+}
+
 void handleIrqException(ExceptionStackFrame *frame, bool isLowerEl, bool isA32)
 {
     (void)isLowerEl;

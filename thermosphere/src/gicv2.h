@@ -41,9 +41,11 @@ typedef struct ArmGicV2Distributor {
     u8 impldef_d00[0xF00 - 0xD00];
     u32 sgir;
     u8 _0xf04[0xF10 - 0xF04];
-    u32 cpendsgir[4];
-    u32 spendsgir[4];
-    u8 _0xf30[0x1000 - 0xF30];
+    u8 cpendsgir[16];
+    u8 spendsgir[16];
+    u8 _0xf30[0xFE8 - 0xF30];
+    u32 icpidr2;
+    u8 _0xfec[0x1000 - 0xFEC];
 } ArmGicV2Distributor;
 
 typedef struct ArmGicV2Controller {
