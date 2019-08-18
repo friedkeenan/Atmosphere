@@ -71,6 +71,17 @@ typedef struct ArmGicV2Controller {
     u8 _0x1004[0x2000 - 0x1004];
 } ArmGicV2Controller;
 
+typedef struct ArmGicV2ListRegister {
+    u32 virtualId       : 9;
+    u32 physicalId      : 10; // note: different encoding if hw = 0 (can't represent it in struct)
+    u32 sbz2            : 3;
+    u32 priority        : 5;
+    bool pending        : 1;
+    bool active         : 1;
+    bool grp1           : 1;
+    bool hw             : 1;
+} ArmGicV2ListRegister;
+
 typedef struct ArmGicV2VirtualInterfaceController {
     u32 hcr;
     u32 vtr;
@@ -86,7 +97,7 @@ typedef struct ArmGicV2VirtualInterfaceController {
     u8 _0x38[0xF0 - 0x38];
     u32 apr;
     u8 _0xf4[0x100 - 0xF4];
-    u32 lr[64];
+    ArmGicV2ListRegister lr[64];
 } ArmGicV2VirtualInterfaceController;
 
 
