@@ -8,6 +8,11 @@ endif
 
 TOPDIR ?= $(CURDIR)
 
+ifneq ($(strip $(wildcard $(CURDIR)/../sept-secondary_00.enc)),)
+	SEPT_00_ENC_PATH ?= $(CURDIR)/../sept-secondary_00.enc
+	SEPT_01_ENC_PATH ?= $(CURDIR)/../sept-secondary_01.enc
+endif
+
 AMS		:= $(TOPDIR)/../../
 include $(DEVKITARM)/base_rules
 

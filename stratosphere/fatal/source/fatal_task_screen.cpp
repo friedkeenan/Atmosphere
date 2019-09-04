@@ -26,7 +26,7 @@ namespace sts::fatal::srv {
 
     namespace {
 
-        #include "fatal_ams_logo.inc"
+        #include "fatal_ams_logo_pink_fatal.inc"
 
     }
 
@@ -203,11 +203,11 @@ namespace sts::fatal::srv {
 
             /* Let the font manager know about our framebuffer. */
             font::ConfigureFontFramebuffer(tiled_buf, GetPixelOffset);
-            font::SetFontColor(0xFFFF);
+            font::SetFontColor(0xF81F);
 
             /* Draw a background. */
             for (size_t i = 0; i < this->fb.fb_size / sizeof(*tiled_buf); i++) {
-                tiled_buf[i] = 0x39C9;
+                tiled_buf[i] = AtmosphereLogoData[0];
             }
 
             /* Draw the atmosphere logo in the bottom right corner. */
@@ -240,7 +240,7 @@ namespace sts::fatal::srv {
 
             /* Add a line. */
             for (size_t x = 32; x < FatalScreenWidth - 32; x++) {
-                tiled_buf[GetPixelOffset(x, font::GetY())] = 0xFFFF;
+                tiled_buf[GetPixelOffset(x, font::GetY())] = 0xF81F;
             }
 
             font::AddSpacingLines(1.5f);

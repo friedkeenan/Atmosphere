@@ -268,7 +268,13 @@ namespace sts::cfg {
         RefreshLoaderConfiguration();
 
         /* Set HBL output. */
-        *out_hbl = IsHblTitleId(title_id) && IsOverrideKeyHeld(&g_hbl_override_config.override_key);
+        if (title_id == ncm::TitleId::AppletPhotoViewer) {
+            OverrideKey album_key = g_hbl_override_config.override_key;
+            album_key.override_by_default = true;
+            *out_hbl = IsHblTitleId(title_id) && IsOverrideKeyHeld(&album_key);
+        } else {
+            *out_hbl = IsHblTitleId(title_id) && IsOverrideKeyHeld(&g_hbl_override_config.override_key);
+        }
 
         /* Set title specific output. */
         TitleSpecificOverrideConfig title_cfg = GetTitleOverrideConfig(title_id);
