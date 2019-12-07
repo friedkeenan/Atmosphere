@@ -16,39 +16,40 @@
 
 #pragma once
 
-#include "stratosphere/defines.hpp"
+/* Pulls in util, svc. */
+#include "atmosphere/common.hpp"
 
-#include "stratosphere/utilities.hpp"
-#include "stratosphere/emummc_utilities.hpp"
+/* Critical modules with no dependencies. */
+#include "stratosphere/ams.hpp"
+#include "stratosphere/os.hpp"
+#include "stratosphere/dd.hpp"
 
-#include "stratosphere/scope_guard.hpp"
+/* Lots of things depend on NCM, for Program IDs. */
+#include "stratosphere/ncm.hpp"
 
-#include "stratosphere/version_check.hpp"
-
-#include "stratosphere/auto_handle.hpp"
-#include "stratosphere/hossynch.hpp"
-#include "stratosphere/message_queue.hpp"
-#include "stratosphere/iwaitable.hpp"
-#include "stratosphere/event.hpp"
-
-#include "stratosphere/waitable_manager.hpp"
-
-#include "stratosphere/ipc.hpp"
-
-#include "stratosphere/mitm.hpp"
-
-#include "stratosphere/services.hpp"
-
-#include "stratosphere/results.hpp"
-
-#include "stratosphere/on_crash.hpp"
-
-#include "stratosphere/svc.hpp"
+/* At this point, just include the rest alphabetically. */
+/* TODO: Figure out optimal order. */
+#include "stratosphere/boot2.hpp"
 #include "stratosphere/cfg.hpp"
+#include "stratosphere/dmnt.hpp"
 #include "stratosphere/fatal.hpp"
 #include "stratosphere/hid.hpp"
-#include "stratosphere/ncm.hpp"
+#include "stratosphere/hos.hpp"
+#include "stratosphere/kvdb.hpp"
+#include "stratosphere/ldr.hpp"
+#include "stratosphere/map.hpp"
+#include "stratosphere/patcher.hpp"
 #include "stratosphere/pm.hpp"
+#include "stratosphere/reg.hpp"
 #include "stratosphere/rnd.hpp"
+#include "stratosphere/ro.hpp"
+#include "stratosphere/settings.hpp"
+#include "stratosphere/sf.hpp"
 #include "stratosphere/sm.hpp"
-#include "stratosphere/util.hpp"
+#include "stratosphere/spl.hpp"
+#include "stratosphere/updater.hpp"
+
+/* Include FS last. */
+#include "stratosphere/fs.hpp"
+#include "stratosphere/fssrv.hpp"
+#include "stratosphere/fssystem.hpp"

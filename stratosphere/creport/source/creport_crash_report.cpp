@@ -13,15 +13,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-
 #include <sys/stat.h>
 #include <sys/types.h>
-
 #include "creport_crash_report.hpp"
 #include "creport_utils.hpp"
 
-namespace sts::creport {
+namespace ams::creport {
 
     namespace {
 
@@ -85,7 +82,7 @@ namespace sts::creport {
 
     }
 
-    void CrashReport::BuildReport(u64 process_id, bool has_extra_info) {
+    void CrashReport::BuildReport(os::ProcessId process_id, bool has_extra_info) {
         this->has_extra_info = has_extra_info;
 
         if (this->OpenProcess(process_id)) {
@@ -115,9 +112,9 @@ namespace sts::creport {
         }
     }
 
-    void CrashReport::GetFatalContext(FatalContext *_out) const {
-        static_assert(sizeof(*_out) == sizeof(sts::fatal::CpuContext));
-        sts::fatal::CpuContext *out = reinterpret_cast<sts::fatal::CpuContext *>(_out);
+    void CrashReport::GetFatalContext(::FatalCpuContext *_out) const {
+        static_assert(sizeof(*_out) == sizeof(ams::fatal::CpuContext));
+        ams::fatal::CpuContext *out = reinterpret_cast<ams::fatal::CpuContext *>(_out);
         std::memset(out, 0, sizeof(*out));
 
         /* TODO: Support generating 32-bit fatal contexts? */
@@ -141,8 +138,8 @@ namespace sts::creport {
             out->aarch64_ctx.SetBaseAddress(this->module_list.GetModuleStartAddress(0));
         }
 
-        /* For ams fatal, which doesn't use afsr0, pass title_id instead. */
-        out->aarch64_ctx.SetTitleIdForAtmosphere(ncm::TitleId{this->process_info.title_id});
+        /* For ams fatal, which doesn't use afsr0, pass program_id instead. */
+        out->aarch64_ctx.SetProgramIdForAtmosphere(ncm::ProgramId{this->process_info.program_id});
     }
 
     void CrashReport::ProcessExceptions() {
@@ -173,7 +170,7 @@ namespace sts::creport {
         this->process_info = d.info.attach_process;
 
         /* On 5.0.0+, we want to parse out a dying message from application crashes. */
-        if (GetRuntimeFirmwareVersion() < FirmwareVersion_500 || !IsApplication()) {
+        if (hos::GetVersion() < hos::Version_500 || !IsApplication()) {
             return;
         }
 
@@ -212,29 +209,29 @@ namespace sts::creport {
     void CrashReport::HandleDebugEventInfoException(const svc::DebugEventInfo &d) {
         switch (d.info.exception.type) {
             case svc::DebugExceptionType::UndefinedInstruction:
-                this->result = ResultCreportUndefinedInstruction;
+                this->result = ResultUndefinedInstruction();
                 break;
             case svc::DebugExceptionType::InstructionAbort:
-                this->result = ResultCreportInstructionAbort;
+                this->result = ResultInstructionAbort();
                 break;
             case svc::DebugExceptionType::DataAbort:
-                this->result = ResultCreportDataAbort;
+                this->result = ResultDataAbort();
                 break;
             case svc::DebugExceptionType::AlignmentFault:
-                this->result = ResultCreportAlignmentFault;
+                this->result = ResultAlignmentFault();
                 break;
             case svc::DebugExceptionType::UserBreak:
-                this->result = ResultCreportUserBreak;
+                this->result = ResultUserBreak();
                 /* Try to parse out the user break result. */
-                if (GetRuntimeFirmwareVersion() >= FirmwareVersion_500) {
+                if (hos::GetVersion() >= hos::Version_500) {
                     svcReadDebugProcessMemory(&this->result, this->debug_handle, d.info.exception.specific.user_break.address, sizeof(this->result));
                 }
                 break;
             case svc::DebugExceptionType::UndefinedSystemCall:
-                this->result = ResultCreportUndefinedSystemCall;
+                this->result = ResultUndefinedSystemCall();
                 break;
             case svc::DebugExceptionType::SystemMemoryError:
-                this->result = ResultCreportSystemMemoryError;
+                this->result = ResultSystemMemoryError();
                 break;
             case svc::DebugExceptionType::DebuggerAttached:
             case svc::DebugExceptionType::BreakPoint:
@@ -249,7 +246,7 @@ namespace sts::creport {
 
     void CrashReport::ProcessDyingMessage() {
         /* Dying message is only stored starting in 5.0.0. */
-        if (GetRuntimeFirmwareVersion() < FirmwareVersion_500) {
+        if (hos::GetVersion() < hos::Version_500) {
             return;
         }
 
@@ -285,7 +282,7 @@ namespace sts::creport {
             char file_path[FS_MAX_PATH];
 
             /* Save crash report. */
-            std::snprintf(file_path, sizeof(file_path), "sdmc:/atmosphere/crash_reports/%011lu_%016lx.log", timestamp, this->process_info.title_id);
+            std::snprintf(file_path, sizeof(file_path), "sdmc:/atmosphere/crash_reports/%011lu_%016lx.log", timestamp, this->process_info.program_id);
             FILE *fp = fopen(file_path, "w");
             if (fp != nullptr) {
                 this->SaveToFile(fp);
@@ -294,7 +291,7 @@ namespace sts::creport {
             }
 
             /* Dump threads. */
-            std::snprintf(file_path, sizeof(file_path), "sdmc:/atmosphere/crash_reports/dumps/%011lu_%016lx_thread_info.bin", timestamp, this->process_info.title_id);
+            std::snprintf(file_path, sizeof(file_path), "sdmc:/atmosphere/crash_reports/dumps/%011lu_%016lx_thread_info.bin", timestamp, this->process_info.program_id);
             fp = fopen(file_path, "wb");
             if (fp != nullptr) {
                 this->thread_list.DumpBinary(fp, this->crashed_thread.GetThreadId());
@@ -306,7 +303,7 @@ namespace sts::creport {
 
     void CrashReport::SaveToFile(FILE *f_report) {
         fprintf(f_report, "Atmosphère Crash Report (v1.4):\n");
-        fprintf(f_report, "Result:                          0x%X (2%03d-%04d)\n\n", this->result, R_MODULE(this->result), R_DESCRIPTION(this->result));
+        fprintf(f_report, "Result:                          0x%X (2%03d-%04d)\n\n", this->result.GetValue(), this->result.GetModule(), this->result.GetDescription());
 
         /* Process Info. */
         char name_buf[0x10] = {};
@@ -314,10 +311,10 @@ namespace sts::creport {
         std::memcpy(name_buf, this->process_info.name, sizeof(this->process_info.name));
         fprintf(f_report, "Process Info:\n");
         fprintf(f_report, "    Process Name:                %s\n", name_buf);
-        fprintf(f_report, "    Title ID:                    %016lx\n", this->process_info.title_id);
+        fprintf(f_report, "    Program ID:                  %016lx\n", this->process_info.program_id);
         fprintf(f_report, "    Process ID:                  %016lx\n", this->process_info.process_id);
         fprintf(f_report, "    Process Flags:               %08x\n", this->process_info.flags);
-        if (GetRuntimeFirmwareVersion() >= FirmwareVersion_500) {
+        if (hos::GetVersion() >= hos::Version_500) {
             fprintf(f_report, "    User Exception Address:      %s\n", this->module_list.GetFormattedAddressString(this->process_info.user_exception_context_address));
         }
 
@@ -352,7 +349,7 @@ namespace sts::creport {
         this->crashed_thread.SaveToFile(f_report);
 
         /* Dying Message. */
-        if (GetRuntimeFirmwareVersion() >= FirmwareVersion_500 && this->dying_message_size != 0) {
+        if (hos::GetVersion() >= hos::Version_500 && this->dying_message_size != 0) {
             fprintf(f_report, "Dying Message Info:\n");
             fprintf(f_report, "    Address:                     0x%s\n", this->module_list.GetFormattedAddressString(this->dying_message_address));
             fprintf(f_report, "    Size:                        0x%016lx\n", this->dying_message_size);

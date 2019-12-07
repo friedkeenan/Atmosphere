@@ -15,10 +15,9 @@
  */
 
 #pragma once
-#include <limits>
-#include <switch.h>
+#include <atmosphere/common.hpp>
 
-namespace sts::rnd {
+namespace ams::rnd {
 
     /* Random utilities. */
     void GenerateRandomBytes(void* out, size_t size);

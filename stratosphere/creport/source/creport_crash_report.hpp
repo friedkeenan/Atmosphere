@@ -13,24 +13,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <switch.h>
-#include <stratosphere.hpp>
-#include <map>
-
 #include "creport_threads.hpp"
 #include "creport_modules.hpp"
 
-namespace sts::creport {
+namespace ams::creport {
 
     class CrashReport {
         private:
-            static constexpr size_t DyingMessageSizeMax = 0x1000;
+            static constexpr size_t DyingMessageSizeMax = os::MemoryPageSize;
         private:
             Handle debug_handle = INVALID_HANDLE;
             bool has_extra_info = true;
-            Result result = ResultCreportIncompleteReport;
+            Result result = ResultIncompleteReport();
 
             /* Attach process info. */
             svc::DebugInfoAttachProcess process_info = {};
@@ -55,7 +50,7 @@ namespace sts::creport {
             }
 
             bool IsComplete() const {
-                return this->result != ResultCreportIncompleteReport;
+                return !ResultIncompleteReport::Includes(this->result);
             }
 
             bool IsOpen() const {
@@ -74,8 +69,8 @@ namespace sts::creport {
                 return this->exception_info.type == svc::DebugExceptionType::UserBreak;
             }
 
-            bool OpenProcess(u64 process_id) {
-                return R_SUCCEEDED(svcDebugActiveProcess(&this->debug_handle, process_id));
+            bool OpenProcess(os::ProcessId process_id) {
+                return R_SUCCEEDED(svcDebugActiveProcess(&this->debug_handle, static_cast<u64>(process_id)));
             }
 
             void Close() {
@@ -85,8 +80,8 @@ namespace sts::creport {
                 }
             }
 
-            void BuildReport(u64 process_id, bool has_extra_info);
-            void GetFatalContext(FatalContext *out) const;
+            void BuildReport(os::ProcessId process_id, bool has_extra_info);
+            void GetFatalContext(::FatalCpuContext *out) const;
             void SaveReport();
         private:
             void ProcessExceptions();

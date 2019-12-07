@@ -13,14 +13,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <switch.h>
-#include <stratosphere.hpp>
-
 #include "boot_battery_driver.hpp"
 
-namespace sts::boot {
+namespace ams::boot {
 
     /* Driver object. */
     class PmicDriver {

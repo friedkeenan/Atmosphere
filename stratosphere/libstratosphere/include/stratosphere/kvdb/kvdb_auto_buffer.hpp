@@ -15,11 +15,9 @@
  */
 
 #pragma once
-#include <switch.h>
-#include "../defines.hpp"
-#include "../results.hpp"
+#include <atmosphere/common.hpp>
 
-namespace sts::kvdb {
+namespace ams::kvdb {
 
     class AutoBuffer {
         NON_COPYABLE(AutoBuffer);
@@ -68,17 +66,15 @@ namespace sts::kvdb {
 
             Result Initialize(size_t size) {
                 /* Check that we're not already initialized. */
-                if (this->buffer != nullptr) {
-                    std::abort();
-                }
+                AMS_ASSERT(this->buffer == nullptr);
 
                 /* Allocate a buffer. */
                 this->buffer = static_cast<u8 *>(std::malloc(size));
                 if (this->buffer == nullptr) {
-                    return ResultKvdbAllocationFailed;
+                    return ResultAllocationFailed();
                 }
                 this->size = size;
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             Result Initialize(const void *buf, size_t size) {
@@ -88,7 +84,7 @@ namespace sts::kvdb {
                 /* Copy the input data in. */
                 std::memcpy(this->buffer, buf, size);
 
-                return ResultSuccess;
+                return ResultSuccess();
             }
     };
 }

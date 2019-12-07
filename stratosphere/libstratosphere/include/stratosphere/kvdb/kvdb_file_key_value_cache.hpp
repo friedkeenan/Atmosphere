@@ -13,13 +13,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include <sys/stat.h>
-#include <switch.h>
 #include "kvdb_bounded_string.hpp"
 #include "kvdb_file_key_value_store.hpp"
 
-namespace sts::kvdb {
+namespace ams::kvdb {
 
     namespace impl {
 
@@ -45,24 +43,18 @@ namespace sts::kvdb {
 
                     /* Open the file. */
                     FILE *fp = fopen(path, "r+b");
-                    if (fp == nullptr) {
-                        return fsdevGetLastResult();
-                    }
+                    R_UNLESS(fp != nullptr, fsdevGetLastResult());
                     ON_SCOPE_EXIT { fclose(fp); };
 
                     /* Write new header with zero entries to the file. */
                     LruHeader new_header = { .entry_count = 0, };
-                    if (fwrite(&new_header, sizeof(new_header), 1, fp) != 1) {
-                        return fsdevGetLastResult();
-                    }
+                    R_UNLESS(fwrite(&new_header, sizeof(new_header), 1, fp) == 1, fsdevGetLastResult());
 
-                    return ResultSuccess;
+                    return ResultSuccess();
                 }
             private:
                 void RemoveIndex(size_t i) {
-                    if (i >= this->GetCount()) {
-                        std::abort();
-                    }
+                    AMS_ASSERT(i < this->GetCount());
                     std::memmove(this->keys + i, this->keys + i + 1, sizeof(*this->keys) * (this->GetCount() - (i + 1)));
                     this->DecrementCount();
                 }
@@ -79,9 +71,8 @@ namespace sts::kvdb {
 
                 Result Initialize(const char *path, void *buf, size_t size) {
                     /* Only initialize once, and ensure we have sufficient memory. */
-                    if (this->keys != nullptr || size < BufferSize) {
-                        std::abort();
-                    }
+                    AMS_ASSERT(this->keys == nullptr);
+                    AMS_ASSERT(size >= BufferSize);
 
                     /* Setup member variables. */
                     this->keys = static_cast<Key *>(buf);
@@ -90,49 +81,37 @@ namespace sts::kvdb {
 
                     /* Open file. */
                     FILE *fp = fopen(this->file_path, "rb");
-                    if (fp == nullptr) {
-                        return fsdevGetLastResult();
-                    }
+                    R_UNLESS(fp != nullptr, fsdevGetLastResult());
                     ON_SCOPE_EXIT { fclose(fp); };
 
                     /* Read header. */
-                    if (fread(&this->header, sizeof(this->header), 1, fp) != 1) {
-                        return fsdevGetLastResult();
-                    }
+                    R_UNLESS(fread(&this->header, sizeof(this->header), 1, fp) == 1, fsdevGetLastResult());
 
                     /* Read entries. */
                     const size_t count = this->GetCount();
                     if (count > 0) {
-                        if (fread(this->keys, std::min(BufferSize, sizeof(Key) * count), 1, fp) != 1) {
-                            return fsdevGetLastResult();
-                        }
+                        R_UNLESS(fread(this->keys, std::min(BufferSize, sizeof(Key) * count), 1, fp) == 1, fsdevGetLastResult());
                     }
 
-                    return ResultSuccess;
+                    return ResultSuccess();
                 }
 
                 Result Save() {
                     /* Open file. */
                     FILE *fp = fopen(this->file_path, "r+b");
-                    if (fp == nullptr) {
-                        return fsdevGetLastResult();
-                    }
+                    R_UNLESS(fp != nullptr, fsdevGetLastResult());
                     ON_SCOPE_EXIT { fclose(fp); };
 
                     /* Write header. */
-                    if (fwrite(&this->header, sizeof(this->header), 1, fp) != 1) {
-                        return fsdevGetLastResult();
-                    }
+                    R_UNLESS(fwrite(&this->header, sizeof(this->header), 1, fp) == 1, fsdevGetLastResult());
 
                     /* Write entries. */
-                    if (fwrite(this->keys, BufferSize, 1, fp) != 1) {
-                        return fsdevGetLastResult();
-                    }
+                    R_UNLESS(fwrite(this->keys, BufferSize, 1, fp) == 1, fsdevGetLastResult());
 
                     /* Flush. */
                     fflush(fp);
 
-                    return ResultSuccess;
+                    return ResultSuccess();
                 }
 
                 size_t GetCount() const {
@@ -148,31 +127,23 @@ namespace sts::kvdb {
                 }
 
                 Key Get(size_t i) const {
-                    if (i >= this->GetCount()) {
-                        std::abort();
-                    }
+                    AMS_ASSERT(i < this->GetCount());
                     return this->keys[i];
                 }
 
                 Key Peek() const {
-                    if (this->IsEmpty()) {
-                        std::abort();
-                    }
+                    AMS_ASSERT(!this->IsEmpty());
                     return this->Get(0);
                 }
 
                 void Push(const Key &key) {
-                    if (this->IsFull()) {
-                        std::abort();
-                    }
+                    AMS_ASSERT(!this->IsFull());
                     this->keys[this->GetCount()] = key;
                     this->IncrementCount();
                 }
 
                 Key Pop() {
-                    if (this->IsEmpty()) {
-                        std::abort();
-                    }
+                    AMS_ASSERT(!this->IsEmpty());
                     this->RemoveIndex(0);
                 }
 
@@ -239,25 +210,29 @@ namespace sts::kvdb {
             }
 
             static Result Exists(bool *out, const char *path, bool is_dir) {
-                /* Check if the path exists. */
-                struct stat st;
-                if (stat(path, &st) != 0) {
-                    R_TRY_CATCH(fsdevGetLastResult()) {
-                        R_CATCH(ResultFsPathNotFound) {
-                            /* If the path doesn't exist, nothing has gone wrong. */
-                            *out = false;
-                            return ResultSuccess;
-                        }
-                    } R_END_TRY_CATCH;
-                }
+                /* Set out to false initially. */
+                *out = false;
 
-                /* Check that our entry type is correct. */
-                if ((is_dir && !(S_ISDIR(st.st_mode))) || (!is_dir && !(S_ISREG(st.st_mode)))) {
-                    return ResultKvdbInvalidFilesystemState;
+                /* Check that the path exists, and that our entry type is correct. */
+                {
+                    struct stat st;
+
+                    if (stat(path, &st) != 0) {
+                        R_TRY_CATCH(fsdevGetLastResult()) {
+                            /* If the path doesn't exist, nothing has gone wrong. */
+                            R_CONVERT(fs::ResultPathNotFound, ResultSuccess());
+                        } R_END_TRY_CATCH;
+                    }
+
+                    if (is_dir) {
+                        R_UNLESS((S_ISDIR(st.st_mode)), ResultInvalidFilesystemState());
+                    } else {
+                        R_UNLESS((S_ISREG(st.st_mode)), ResultInvalidFilesystemState());
+                    }
                 }
 
                 *out = true;
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             static Result DirectoryExists(bool *out, const char *path) {
@@ -271,11 +246,9 @@ namespace sts::kvdb {
             static Result CreateNewCache(const char *dir) {
                 /* Make a new key value store filesystem, and a new lru_list.dat. */
                 R_TRY(LeastRecentlyUsedList::CreateNewList(GetLeastRecentlyUsedListPath(dir)));
-                if (mkdir(GetFileKeyValueStorePath(dir), 0) != 0) {
-                    return fsdevGetLastResult();
-                }
+                R_UNLESS(mkdir(GetFileKeyValueStorePath(dir), 0) == 0, fsdevGetLastResult());
 
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             static Result ValidateExistingCache(const char *dir) {
@@ -285,16 +258,12 @@ namespace sts::kvdb {
                 R_TRY(DirectoryExists(&has_kvs, GetFileKeyValueStorePath(dir)));
 
                 /* If neither exists, CreateNewCache was never called. */
-                if (!has_lru && !has_kvs) {
-                    return ResultKvdbNotCreated;
-                }
+                R_UNLESS(has_lru || has_kvs, ResultNotCreated());
 
                 /* If one exists but not the other, we have an invalid state. */
-                if (has_lru ^ has_kvs) {
-                    return ResultKvdbInvalidFilesystemState;
-                }
+                R_UNLESS(has_lru && has_kvs, ResultInvalidFilesystemState());
 
-                return ResultSuccess;
+                return ResultSuccess();
             }
         private:
             void RemoveOldestKey() {
@@ -316,7 +285,7 @@ namespace sts::kvdb {
                 /* layout it can't really be fixed without breaking existing devices... */
                 R_TRY(this->kvs.Initialize(dir));
 
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             size_t GetCount() const {
@@ -370,12 +339,12 @@ namespace sts::kvdb {
                 while (true) {
                     /* Try to set the key. */
                     R_TRY_CATCH(this->kvs.Set(key, value, value_size)) {
-                        R_CATCH_RANGE(ResultFsNotEnoughFreeSpace) {
+                        R_CATCH(fs::ResultNotEnoughFreeSpace) {
                             /* If our entry is the only thing in the Lru list, remove it. */
                             if (this->lru_list.GetCount() == 1) {
                                 this->lru_list.Pop();
                                 R_TRY(this->lru_list.Save());
-                                return R_TRY_CATCH_RESULT;
+                                return fs::ResultNotEnoughFreeSpace();
                             }
 
                             /* Otherwise, remove the oldest element from the cache and try again. */
@@ -391,7 +360,7 @@ namespace sts::kvdb {
                 /* Save the list. */
                 R_TRY(this->lru_list.Save());
 
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             template<typename Value>
@@ -405,7 +374,7 @@ namespace sts::kvdb {
                 R_TRY(this->kvs.Remove(key));
                 R_TRY(this->lru_list.Save());
 
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             Result RemoveAll() {
@@ -415,7 +384,7 @@ namespace sts::kvdb {
                 }
                 R_TRY(this->lru_list.Save());
 
-                return ResultSuccess;
+                return ResultSuccess();
             }
     };
 

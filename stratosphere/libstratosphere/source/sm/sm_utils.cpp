@@ -13,26 +13,30 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include "sm_utils.hpp"
 
-namespace sts::sm::impl {
+namespace ams::sm::impl {
 
     namespace {
 
         /* Globals. */
-        HosRecursiveMutex g_user_session_mutex;
-        HosRecursiveMutex g_mitm_session_mutex;
+        os::RecursiveMutex g_user_session_mutex;
+        os::RecursiveMutex g_mitm_ack_session_mutex;
+        os::RecursiveMutex g_per_thread_session_mutex;
 
     }
 
     /* Utilities. */
-    HosRecursiveMutex &GetUserSessionMutex() {
+    os::RecursiveMutex &GetUserSessionMutex() {
         return g_user_session_mutex;
     }
 
-    HosRecursiveMutex &GetMitmSessionMutex() {
-        return g_mitm_session_mutex;
+    os::RecursiveMutex &GetMitmAcknowledgementSessionMutex() {
+        return g_mitm_ack_session_mutex;
+    }
+
+    os::RecursiveMutex &GetPerThreadSessionMutex() {
+        return g_per_thread_session_mutex;
     }
 
 }

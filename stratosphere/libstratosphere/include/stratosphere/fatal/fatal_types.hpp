@@ -15,12 +15,11 @@
  */
 
 #pragma once
-#include <switch.h>
-#include "../defines.hpp"
-#include "../results.hpp"
+#include <atmosphere/common.hpp>
 #include "../ncm/ncm_types.hpp"
+#include "../sf/sf_buffer_tags.hpp"
 
-namespace sts::fatal {
+namespace ams::fatal {
 
     namespace aarch64 {
 
@@ -148,14 +147,14 @@ namespace sts::fatal {
                 std::memset(this, 0, sizeof(*this));
             }
 
-            void SetTitleIdForAtmosphere(ncm::TitleId title_id) {
-                /* Right now, we mux title ID in through afsr when creport. */
+            void SetProgramIdForAtmosphere(ncm::ProgramId program_id) {
+                /* Right now, we mux program ID in through afsr when creport. */
                 /* TODO: Better way to do this? */
-                this->afsr0 = static_cast<RegisterType>(title_id);
+                this->afsr0 = static_cast<RegisterType>(program_id);
             }
 
-            ncm::TitleId GetTitleIdForAtmosphere() const {
-                return ncm::TitleId{this->afsr0};
+            ncm::ProgramId GetProgramIdForAtmosphere() const {
+                return ncm::ProgramId{this->afsr0};
             }
 
             void SetRegisterValue(RegisterName name, RegisterType value) {
@@ -266,15 +265,15 @@ namespace sts::fatal {
                 std::memset(this, 0, sizeof(*this));
             }
 
-            void SetTitleIdForAtmosphere(ncm::TitleId title_id) {
-                /* Right now, we mux title ID in through afsr when creport. */
+            void SetProgramIdForAtmosphere(ncm::ProgramId program_id) {
+                /* Right now, we mux program ID in through afsr when creport. */
                 /* TODO: Better way to do this? */
-                this->afsr0 = static_cast<RegisterType>(static_cast<u64>(title_id) >> 0);
-                this->afsr1 = static_cast<RegisterType>(static_cast<u64>(title_id) >> 32);
+                this->afsr0 = static_cast<RegisterType>(static_cast<u64>(program_id) >> 0);
+                this->afsr1 = static_cast<RegisterType>(static_cast<u64>(program_id) >> 32);
             }
 
-            ncm::TitleId GetTitleIdForAtmosphere() const {
-                return ncm::TitleId{(static_cast<u64>(this->afsr1) << 32ul) | (static_cast<u64>(this->afsr0) << 0ul)};
+            ncm::ProgramId GetProgramIdForAtmosphere() const {
+                return ncm::ProgramId{(static_cast<u64>(this->afsr1) << 32ul) | (static_cast<u64>(this->afsr0) << 0ul)};
             }
 
             void SetRegisterValue(RegisterName name, RegisterType value) {
@@ -293,7 +292,7 @@ namespace sts::fatal {
 
     }
 
-    struct CpuContext {
+    struct CpuContext : sf::LargeData, sf::PrefersMapAliasTransferMode {
         enum Architecture {
             Architecture_Aarch64 = 0,
             Architecture_Aarch32 = 1,
@@ -319,8 +318,8 @@ namespace sts::fatal {
     namespace srv {
 
         struct ThrowContext {
-            u32 error_code;
-            ncm::TitleId title_id;
+            Result result;
+            ncm::ProgramId program_id;
             char proc_name[0xD];
             bool is_creport;
             CpuContext cpu_ctx;
@@ -331,7 +330,16 @@ namespace sts::fatal {
             u8 stack_dump[0x100];
 
             void ClearState() {
-                std::memset(this, 0, sizeof(*this));
+                this->result = ResultSuccess();
+                this->program_id = ncm::ProgramId::Invalid;
+                std::memset(this->proc_name, 0, sizeof(this->proc_name));
+                this->is_creport = false;
+                std::memset(&this->cpu_ctx, 0, sizeof(this->cpu_ctx));
+                this->generate_error_report = false;
+                std::memset(&this->erpt_event, 0, sizeof(this->erpt_event));
+                std::memset(&this->battery_event, 0, sizeof(this->battery_event));
+                this->stack_dump_size = 0;
+                std::memset(this->stack_dump, 0, sizeof(this->stack_dump));
             }
         };
 

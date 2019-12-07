@@ -17,79 +17,75 @@
 #include <switch.h>
 #include "pm_ams.h"
 
-Result pminfoAtmosphereGetProcessId(u64 *out_pid, u64 tid) {
-    IpcCommand c;
-    ipcInitialize(&c);
-    Service *srv = pminfoGetServiceSession();
+Result pminfoAtmosphereGetProcessId(u64 *out_pid, u64 program_id) {
+    return serviceDispatchInOut(pminfoGetServiceSession(), 65000, program_id, *out_pid);
+}
 
+Result pminfoAtmosphereHasLaunchedProgram(bool *out, u64 program_id) {
+    u8 tmp;
+    Result rc = serviceDispatchInOut(pminfoGetServiceSession(), 65001, program_id, tmp);
+    if (R_SUCCEEDED(rc) && out) *out = tmp & 1;
+    return rc;
+}
+
+Result pminfoAtmosphereGetProcessInfo(NcmProgramLocation *loc_out, CfgOverrideStatus *status_out, u64 pid) {
     struct {
-        u64 magic;
-        u64 cmd_id;
-        u64 title_id;
-    } *raw;
+        NcmProgramLocation loc;
+        CfgOverrideStatus status;
+    } out;
 
-    raw = serviceIpcPrepareHeader(srv, &c, sizeof(*raw));
-    raw->magic = SFCI_MAGIC;
-    raw->cmd_id = 65000;
-    raw->title_id = tid;
-
-    Result rc = serviceIpcDispatch(srv);
+    Result rc = serviceDispatchInOut(pminfoGetServiceSession(), 65002, pid, out);
 
     if (R_SUCCEEDED(rc)) {
-        IpcParsedCommand r;
-        struct {
-            u64 magic;
-            u64 result;
-            u64 pid;
-        } *resp;
-
-        serviceIpcParse(srv, &r, sizeof(*resp));
-        resp = r.Raw;
-
-        rc = resp->result;
-
-        if (R_SUCCEEDED(rc)) {
-            *out_pid = resp->pid;
-        }
+        if (loc_out) *loc_out = out.loc;
+        if (status_out) *status_out = out.status;
     }
 
     return rc;
 }
 
-Result pminfoAtmosphereHasLaunchedTitle(bool *out, u64 tid) {
-    IpcCommand c;
-    ipcInitialize(&c);
-    Service *srv = pminfoGetServiceSession();
+Result pmdmntAtmosphereGetProcessInfo(Handle* handle_out, NcmProgramLocation *loc_out, CfgOverrideStatus *status_out, u64 pid) {
+    Handle tmp_handle;
 
     struct {
-        u64 magic;
-        u64 cmd_id;
-        u64 title_id;
-    } *raw;
+        NcmProgramLocation loc;
+        CfgOverrideStatus status;
+    } out;
 
-    raw = serviceIpcPrepareHeader(srv, &c, sizeof(*raw));
-    raw->magic = SFCI_MAGIC;
-    raw->cmd_id = 65001;
-    raw->title_id = tid;
-
-    Result rc = serviceIpcDispatch(srv);
+    Result rc = serviceDispatchInOut(pmdmntGetServiceSession(), 65000, pid, out,
+        .out_handle_attrs = { SfOutHandleAttr_HipcCopy },
+        .out_handles = &tmp_handle,
+    );
 
     if (R_SUCCEEDED(rc)) {
-        IpcParsedCommand r;
-        struct {
-            u64 magic;
-            u64 result;
-            u8 has_launched_title;
-        } *resp;
-
-        serviceIpcParse(srv, &r, sizeof(*resp));
-        resp = r.Raw;
-
-        rc = resp->result;
-
-        if (R_SUCCEEDED(rc)) {
-            *out = resp->has_launched_title != 0;
+        if (handle_out) {
+            *handle_out = tmp_handle;
+        } else {
+            svcCloseHandle(tmp_handle);
         }
+
+        if (loc_out) *loc_out = out.loc;
+        if (status_out) *status_out = out.status;
+    }
+
+    return rc;
+}
+
+Result pmdmntAtmosphereGetCurrentLimitInfo(u64 *out_cur, u64 *out_lim, u32 group, u32 resource) {
+    const struct {
+        u32 group;
+        u32 resource;
+    } in = { group, resource };
+    struct {
+        u64 cur;
+        u64 lim;
+    } out;
+
+    Result rc = serviceDispatchInOut(pmdmntGetServiceSession(), 65001, in, out);
+
+    if (R_SUCCEEDED(rc)) {
+        if (out_cur) *out_cur = out.cur;
+        if (out_lim) *out_lim = out.lim;
     }
 
     return rc;

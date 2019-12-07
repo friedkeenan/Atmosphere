@@ -18,7 +18,7 @@
 
 #include "gpio_utils.hpp"
 
-namespace sts::gpio {
+namespace ams::gpio {
 
     namespace {
 
@@ -33,16 +33,13 @@ namespace sts::gpio {
 
         /* Helpers. */
         inline u32 GetPadDescriptor(u32 gpio_pad_name) {
-            if (gpio_pad_name >= PadNameMax) {
-                std::abort();
-            }
-
+            AMS_ASSERT(gpio_pad_name < PadNameMax);
             return Map[gpio_pad_name];
         }
 
         uintptr_t GetBaseAddress() {
             if (!g_initialized_gpio_vaddr) {
-                g_gpio_vaddr = GetIoMapping(PhysicalBase, 0x1000);
+                g_gpio_vaddr = dd::GetIoMapping(PhysicalBase, os::MemoryPageSize);
                 g_initialized_gpio_vaddr = true;
             }
             return g_gpio_vaddr;

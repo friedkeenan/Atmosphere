@@ -13,14 +13,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <switch.h>
-#include <stratosphere.hpp>
-
 #include "boot_i2c_utils.hpp"
 #include "boot_pmic_driver.hpp"
 
-namespace sts::boot {
+namespace ams::boot {
 
     void PmicDriver::ShutdownSystem() {
         R_ASSERT(this->ShutdownSystem(false));
@@ -34,7 +30,7 @@ namespace sts::boot {
         u8 power_status;
         R_TRY(this->GetPowerStatus(&power_status));
         *out = (power_status & 0x02) != 0;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result PmicDriver::GetPowerIntr(u8 *out) {
@@ -56,7 +52,7 @@ namespace sts::boot {
         u8 power_intr;
         R_TRY(this->GetPowerIntr(&power_intr));
         *out = (power_intr & 0x08) != 0;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result PmicDriver::ShutdownSystem(bool reboot) {
@@ -89,7 +85,7 @@ namespace sts::boot {
 
         /* Allow up to 5 seconds for shutdown/reboot to take place. */
         svcSleepThread(5'000'000'000ul);
-        std::abort();
+        AMS_ASSERT(false);
     }
 
     void PmicDriver::FinalizeBattery(BatteryDriver *battery_driver) {

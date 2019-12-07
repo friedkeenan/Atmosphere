@@ -15,12 +15,10 @@
  */
 
 #pragma once
-#include <switch.h>
-
-#include "../spl/spl_types.hpp"
 #include "updater_types.hpp"
+#include "../spl/spl_types.hpp"
 
-namespace sts::updater {
+namespace ams::updater {
 
     /* Public API. */
     BootImageUpdateType GetBootImageUpdateType(spl::HardwareType hw_type);

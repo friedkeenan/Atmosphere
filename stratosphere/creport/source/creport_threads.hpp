@@ -13,13 +13,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <switch.h>
 #include <stratosphere.hpp>
-#include <map>
 
-namespace sts::creport {
+namespace ams::creport {
 
     /* Forward declare ModuleList class. */
     class ModuleList;

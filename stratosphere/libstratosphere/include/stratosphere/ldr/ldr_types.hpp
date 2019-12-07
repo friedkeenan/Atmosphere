@@ -15,28 +15,26 @@
  */
 
 #pragma once
-
-#include <type_traits>
-#include <switch.h>
-#include "../svc/svc_types.hpp"
+#include <atmosphere/common.hpp>
 #include "../ncm/ncm_types.hpp"
+#include "../sf/sf_buffer_tags.hpp"
 
-namespace sts::ldr {
+namespace ams::ldr {
 
     /* General types. */
-    struct ProgramInfo {
+    struct ProgramInfo : sf::LargeData {
         u8 main_thread_priority;
         u8 default_cpu_id;
         u16 flags;
         u32 main_thread_stack_size;
-        ncm::TitleId title_id;
+        ncm::ProgramId program_id;
         u32 acid_sac_size;
         u32 aci_sac_size;
         u32 acid_fac_size;
         u32 aci_fah_size;
         u8 ac_buffer[0x3E0];
     };
-    static_assert(sizeof(ProgramInfo) == 0x400, "ProgramInfo definition!");
+    static_assert(std::is_pod<ProgramInfo>::value && sizeof(ProgramInfo) == 0x400, "ProgramInfo definition!");
 
     enum ProgramInfoFlag {
         ProgramInfoFlag_SystemModule        = (0 << 0),
@@ -151,7 +149,7 @@ namespace sts::ldr {
 
         u32 magic;
         u8  reserved_04[0xC];
-        ncm::TitleId title_id;
+        ncm::ProgramId program_id;
         u8  reserved_18[0x8];
         u32 fah_offset;
         u32 fah_size;
@@ -190,8 +188,8 @@ namespace sts::ldr {
         u8  version;
         u8  reserved_209[3];
         u32 flags;
-        ncm::TitleId title_id_min;
-        ncm::TitleId title_id_max;
+        ncm::ProgramId program_id_min;
+        ncm::ProgramId program_id_max;
         u32 fac_offset;
         u32 fac_size;
         u32 sac_offset;
@@ -231,7 +229,7 @@ namespace sts::ldr {
         u32 system_resource_size;
         u32 version;
         u32 main_thread_stack_size;
-        char title_name[0x10];
+        char program_name[0x10];
         char product_code[0x10];
         u8  reserved_40[0x30];
         u32 aci_offset;

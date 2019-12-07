@@ -13,16 +13,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <switch.h>
 #include <stratosphere.hpp>
-#include <stratosphere/ldr.hpp>
 
-namespace sts::ldr {
+namespace ams::ldr {
 
     /* Launch Record API. */
-    bool HasLaunchedTitle(ncm::TitleId title_id);
-    void SetLaunchedTitle(ncm::TitleId title_id);
+    bool HasLaunchedProgram(ncm::ProgramId program_id);
+    void SetLaunchedProgram(ncm::ProgramId program_id);
 
 }

@@ -19,14 +19,19 @@
 #include "pm_types.hpp"
 #include "../ncm/ncm_types.hpp"
 
-namespace sts::pm::info {
+namespace ams::pm::info {
 
     /* Information API. */
-    Result GetTitleId(ncm::TitleId *out_title_id, u64 process_id);
-    Result GetProcessId(u64 *out_process_id, ncm::TitleId title_id);
-    Result HasLaunchedTitle(bool *out, ncm::TitleId title_id);
+    Result GetProgramId(ncm::ProgramId *out_program_id, os::ProcessId process_id);
+    Result GetProcessId(os::ProcessId *out_process_id, ncm::ProgramId program_id);
+    Result HasLaunchedProgram(bool *out, ncm::ProgramId program_id);
+
+    Result GetProcessInfo(ncm::ProgramLocation *out_loc, cfg::OverrideStatus *out_status, os::ProcessId process_id);
 
     /* Information convenience API. */
-    bool HasLaunchedTitle(ncm::TitleId title_id);
+    bool HasLaunchedProgram(ncm::ProgramId program_id);
+
+    Result IsHblProcessId(bool *out, os::ProcessId process_id);
+    Result IsHblProgramId(bool *out, ncm::ProgramId program_id);
 
 }

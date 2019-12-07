@@ -13,58 +13,81 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <set>
-#include <switch.h>
 #include <stratosphere.hpp>
-#include <stratosphere/pm.hpp>
-
 #include "pm_ams.h"
 
-namespace sts::pm::info {
+namespace ams::pm::info {
 
     namespace {
 
         /* Global lock. */
-        HosMutex g_info_lock;
-        std::set<u64> g_cached_launched_titles;
+        os::Mutex g_info_lock;
+        /* TODO: Less memory-intensive storage? */
+        std::set<u64> g_cached_launched_programs;
 
     }
 
     /* Information API. */
-    Result GetTitleId(ncm::TitleId *out_title_id, u64 process_id) {
-        std::scoped_lock<HosMutex> lk(g_info_lock);
+    Result GetProgramId(ncm::ProgramId *out_program_id, os::ProcessId process_id) {
+        std::scoped_lock lk(g_info_lock);
 
-        return pminfoGetTitleId(reinterpret_cast<u64 *>(out_title_id), process_id);
+        return pminfoGetProgramId(reinterpret_cast<u64 *>(out_program_id), static_cast<u64>(process_id));
     }
 
-    Result GetProcessId(u64 *out_process_id, ncm::TitleId title_id) {
-        std::scoped_lock<HosMutex> lk(g_info_lock);
+    Result GetProcessId(os::ProcessId *out_process_id, ncm::ProgramId program_id) {
+        std::scoped_lock lk(g_info_lock);
 
-        return pminfoAtmosphereGetProcessId(out_process_id, static_cast<u64>(title_id));
+        return pminfoAtmosphereGetProcessId(reinterpret_cast<u64 *>(out_process_id), static_cast<u64>(program_id));
     }
 
-    Result WEAK HasLaunchedTitle(bool *out, ncm::TitleId title_id) {
-        std::scoped_lock<HosMutex> lk(g_info_lock);
+    Result GetProcessInfo(ncm::ProgramLocation *out_loc, cfg::OverrideStatus *out_status, os::ProcessId process_id) {
+        std::scoped_lock lk(g_info_lock);
 
-        if (g_cached_launched_titles.find(static_cast<u64>(title_id)) != g_cached_launched_titles.end()) {
+        *out_loc = {};
+        *out_status = {};
+        static_assert(sizeof(*out_status) == sizeof(CfgOverrideStatus));
+        return pminfoAtmosphereGetProcessInfo(reinterpret_cast<NcmProgramLocation *>(out_loc), reinterpret_cast<CfgOverrideStatus *>(out_status), static_cast<u64>(process_id));
+    }
+
+    Result WEAK HasLaunchedProgram(bool *out, ncm::ProgramId program_id) {
+        std::scoped_lock lk(g_info_lock);
+
+        if (g_cached_launched_programs.find(static_cast<u64>(program_id)) != g_cached_launched_programs.end()) {
             *out = true;
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
         bool has_launched = false;
-        R_TRY(pminfoAtmosphereHasLaunchedTitle(&has_launched, static_cast<u64>(title_id)));
+        R_TRY(pminfoAtmosphereHasLaunchedProgram(&has_launched, static_cast<u64>(program_id)));
         if (has_launched) {
-            g_cached_launched_titles.insert(static_cast<u64>(title_id));
+            g_cached_launched_programs.insert(static_cast<u64>(program_id));
         }
 
         *out = has_launched;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
-    bool HasLaunchedTitle(ncm::TitleId title_id) {
+    bool HasLaunchedProgram(ncm::ProgramId program_id) {
         bool has_launched = false;
-        R_ASSERT(HasLaunchedTitle(&has_launched, title_id));
+        R_ASSERT(HasLaunchedProgram(&has_launched, program_id));
         return has_launched;
+    }
+
+
+    Result IsHblProcessId(bool *out, os::ProcessId process_id) {
+        ncm::ProgramLocation loc;
+        cfg::OverrideStatus override_status;
+        R_TRY(GetProcessInfo(&loc, &override_status, process_id));
+
+        *out = override_status.IsHbl();
+        return ResultSuccess();
+    }
+
+    Result IsHblProgramId(bool *out, ncm::ProgramId program_id) {
+        os::ProcessId process_id;
+        R_TRY(GetProcessId(&process_id, program_id));
+
+        return IsHblProcessId(out, process_id);
     }
 
 }

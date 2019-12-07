@@ -5,24 +5,30 @@
  * @copyright libnx Authors
  */
 #pragma once
-#include <switch.h>
+#include <switch/types.h>
+#include <switch/kernel/event.h>
+#include <switch/services/sm.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-Result smAtmosphereHasService(bool *out, const char *name);
-Result smAtmosphereWaitService(const char *name);
-Result smAtmosphereHasMitm(bool *out, const char *name);
-Result smAtmosphereWaitMitm(const char *name);
+Result smAtmosphereHasService(bool *out, SmServiceName name);
+Result smAtmosphereWaitService(SmServiceName name);
+Result smAtmosphereHasMitm(bool *out, SmServiceName name);
+Result smAtmosphereWaitMitm(SmServiceName name);
 
 Result smAtmosphereMitmInitialize(void);
 void smAtmosphereMitmExit(void);
+Service *smAtmosphereMitmGetServiceSession();
 
-Result smAtmosphereMitmInstall(Handle *handle_out, Handle *query_out, const char *name);
-Result smAtmosphereMitmUninstall(const char *name);
-Result smAtmosphereMitmDeclareFuture(const char *name);
-Result smAtmosphereMitmAcknowledgeSession(Service *srv_out, u64 *pid_out, u64 *tid_out, const char *name);
+Result smAtmosphereOpenSession(Service *out);
+void smAtmosphereCloseSession(Service *srv);
+
+Result smAtmosphereMitmInstall(Service *fwd_srv, Handle *handle_out, Handle *query_out, SmServiceName name);
+Result smAtmosphereMitmUninstall(SmServiceName name);
+Result smAtmosphereMitmDeclareFuture(SmServiceName name);
+Result smAtmosphereMitmAcknowledgeSession(Service *srv_out, void *info_out, SmServiceName name);
 
 #ifdef __cplusplus
 }

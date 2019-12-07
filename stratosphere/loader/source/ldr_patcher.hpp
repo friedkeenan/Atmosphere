@@ -13,12 +13,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <switch.h>
-#include <stratosphere/ldr.hpp>
+#include <stratosphere.hpp>
 
-namespace sts::ldr {
+namespace ams::ldr {
 
     /* Apply IPS patches. */
     void LocateAndApplyIpsPatchesToModule(const u8 *build_id, uintptr_t mapped_nso, size_t mapped_size);

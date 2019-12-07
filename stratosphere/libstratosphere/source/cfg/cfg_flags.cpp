@@ -14,11 +14,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <switch.h>
 #include <stratosphere.hpp>
-#include <stratosphere/cfg.hpp>
 
-namespace sts::cfg {
+namespace ams::cfg {
 
     namespace {
 
@@ -31,14 +29,14 @@ namespace sts::cfg {
 
             /* Mount the SD card. */
             FsFileSystem sd_fs = {};
-            if (R_FAILED(fsMountSdcard(&sd_fs))) {
+            if (R_FAILED(fsOpenSdCardFileSystem(&sd_fs))) {
                 return false;
             }
             ON_SCOPE_EXIT { serviceClose(&sd_fs.s); };
 
             /* Open the file. */
             FsFile flag_file;
-            if (R_FAILED(fsFsOpenFile(&sd_fs, flag_path, FS_OPEN_READ, &flag_file))) {
+            if (R_FAILED(fsFsOpenFile(&sd_fs, flag_path, FsOpenMode_Read, &flag_file))) {
                 return false;
             }
             fsFileClose(&flag_file);
@@ -49,20 +47,20 @@ namespace sts::cfg {
     }
 
     /* Flag utilities. */
-    bool HasFlag(ncm::TitleId title_id, const char *flag) {
-        return HasTitleSpecificFlag(title_id, flag) || (IsHblTitleId(title_id) && HasHblFlag(flag));
+    bool HasFlag(const sm::MitmProcessInfo &process_info, const char *flag) {
+        return HasContentSpecificFlag(process_info.program_id, flag) || (process_info.override_status.IsHbl() && HasHblFlag(flag));
     }
 
-    bool HasTitleSpecificFlag(ncm::TitleId title_id, const char *flag) {
-        char title_flag[FS_MAX_PATH];
-        std::snprintf(title_flag, sizeof(title_flag) - 1, "/atmosphere/titles/%016lx/flags/%s.flag", static_cast<u64>(title_id), flag);
-        return HasFlagFile(title_flag);
+    bool HasContentSpecificFlag(ncm::ProgramId program_id, const char *flag) {
+        char content_flag[FS_MAX_PATH];
+        std::snprintf(content_flag, sizeof(content_flag) - 1, "/atmosphere/contents/%016lx/flags/%s.flag", static_cast<u64>(program_id), flag);
+        return HasFlagFile(content_flag);
     }
 
     bool HasGlobalFlag(const char *flag) {
-        char title_flag[FS_MAX_PATH];
-        std::snprintf(title_flag, sizeof(title_flag) - 1, "/atmosphere/flags/%s.flag", flag);
-        return HasFlagFile(title_flag);
+        char global_flag[FS_MAX_PATH];
+        std::snprintf(global_flag, sizeof(global_flag) - 1, "/atmosphere/flags/%s.flag", flag);
+        return HasFlagFile(global_flag);
     }
 
     bool HasHblFlag(const char *flag) {

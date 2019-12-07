@@ -13,19 +13,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <switch.h>
-#include <cstdio>
-#include <algorithm>
-#include <stratosphere.hpp>
-#include <stratosphere/map.hpp>
-
 #include "ro_nrr_utils.hpp"
 #include "ro_nro_utils.hpp"
 #include "ro_patcher.hpp"
 #include "ro_service_impl.hpp"
 
-namespace sts::ro::impl {
+namespace ams::ro::impl {
 
     namespace {
 
@@ -77,27 +70,25 @@ namespace sts::ro::impl {
             NroInfo nro_infos[MaxNroInfos];
             NrrInfo nrr_infos[MaxNrrInfos];
             Handle process_handle;
-            u64 process_id;
+            os::ProcessId process_id;
             bool in_use;
 
-            u64 GetTitleId(Handle other_process_h) const {
+            ncm::ProgramId GetProgramId(Handle other_process_h) const {
                 /* Automatically select a handle, allowing for override. */
                 Handle process_h = this->process_handle;
                 if (other_process_h != INVALID_HANDLE) {
                     process_h = other_process_h;
                 }
 
-                u64 title_id = 0;
-                if (GetRuntimeFirmwareVersion() >= FirmwareVersion_300) {
+                ncm::ProgramId program_id = ncm::ProgramId::Invalid;
+                if (hos::GetVersion() >= hos::Version_300) {
                     /* 3.0.0+: Use svcGetInfo. */
-                    R_ASSERT(svcGetInfo(&title_id, InfoType_TitleId, process_h, 0));
+                    R_ASSERT(svcGetInfo(&program_id.value, InfoType_ProgramId, process_h, 0));
                 } else {
                     /* 1.0.0-2.3.0: We're not inside loader, so ask pm. */
-                    u64 process_id = 0;
-                    R_ASSERT(svcGetProcessId(&process_id, process_h));
-                    R_ASSERT(pminfoGetTitleId(&title_id, process_id));
+                    R_ASSERT(pm::info::GetProgramId(&program_id, os::GetProcessId(process_h)));
                 }
-                return title_id;
+                return program_id;
             }
 
             Result GetNrrInfoByAddress(NrrInfo **out, u64 nrr_heap_address) {
@@ -106,10 +97,10 @@ namespace sts::ro::impl {
                         if (out != nullptr) {
                             *out = &this->nrr_infos[i];
                         }
-                        return ResultSuccess;
+                        return ResultSuccess();
                     }
                 }
-                return ResultRoNotRegistered;
+                return ResultNotRegistered();
             }
 
             Result GetFreeNrrInfo(NrrInfo **out) {
@@ -118,10 +109,10 @@ namespace sts::ro::impl {
                         if (out != nullptr) {
                             *out = &this->nrr_infos[i];
                         }
-                        return ResultSuccess;
+                        return ResultSuccess();
                     }
                 }
-                return ResultRoTooManyNrr;
+                return ResultTooManyNrr();
             }
 
             Result GetNroInfoByAddress(NroInfo **out, u64 nro_address) {
@@ -130,10 +121,10 @@ namespace sts::ro::impl {
                         if (out != nullptr) {
                             *out = &this->nro_infos[i];
                         }
-                        return ResultSuccess;
+                        return ResultSuccess();
                     }
                 }
-                return ResultRoNotLoaded;
+                return ResultNotLoaded();
             }
 
             Result GetNroInfoByModuleId(NroInfo **out, const ModuleId *module_id) {
@@ -142,10 +133,10 @@ namespace sts::ro::impl {
                         if (out != nullptr) {
                             *out = &this->nro_infos[i];
                         }
-                        return ResultSuccess;
+                        return ResultSuccess();
                     }
                 }
-                return ResultRoNotLoaded;
+                return ResultNotLoaded();
             }
 
             Result GetFreeNroInfo(NroInfo **out) {
@@ -154,10 +145,10 @@ namespace sts::ro::impl {
                         if (out != nullptr) {
                             *out = &this->nro_infos[i];
                         }
-                        return ResultSuccess;
+                        return ResultSuccess();
                     }
                 }
-                return ResultRoTooManyNro;
+                return ResultTooManyNro();
             }
 
             Result ValidateHasNroHash(const NroHeader *nro_header) const {
@@ -169,34 +160,27 @@ namespace sts::ro::impl {
                     if (this->nrr_infos[i].in_use) {
                         const NrrHeader *nrr_header = this->nrr_infos[i].header;
                         const Sha256Hash *nro_hashes = reinterpret_cast<const Sha256Hash *>(nrr_header->GetHashes());
-                        if (std::binary_search(nro_hashes, nro_hashes + nrr_header->GetNumHashes(), hash)) {
-                            return ResultSuccess;
-                        }
+                        R_UNLESS(!std::binary_search(nro_hashes, nro_hashes + nrr_header->GetNumHashes(), hash), ResultSuccess());
                     }
                 }
 
-                return ResultRoNotAuthorized;
+                return ResultNotAuthorized();
             }
 
             Result ValidateNro(ModuleId *out_module_id, u64 *out_rx_size, u64 *out_ro_size, u64 *out_rw_size, u64 base_address, u64 expected_nro_size, u64 expected_bss_size) {
                 /* Find space to map the NRO. */
                 uintptr_t map_address;
-                if (R_FAILED(map::LocateMappableSpace(&map_address, expected_nro_size))) {
-                    return ResultRoInsufficientAddressSpace;
-                }
+                R_UNLESS(R_SUCCEEDED(map::LocateMappableSpace(&map_address, expected_nro_size)), ResultOutOfAddressSpace());
 
                 /* Actually map the NRO. */
                 map::AutoCloseMap nro_map(map_address, this->process_handle, base_address, expected_nro_size);
-                if (!nro_map.IsSuccess()) {
-                    return nro_map.GetResult();
-                }
+                R_TRY(nro_map.GetResult());
 
                 /* Validate header. */
                 const NroHeader *header = reinterpret_cast<const NroHeader *>(map_address);
-                if (!header->IsMagicValid()) {
-                    return ResultRoInvalidNro;
-                }
+                R_UNLESS(header->IsMagicValid(), ResultInvalidNro());
 
+                /* Read sizes from header. */
                 const u64 nro_size = header->GetSize();
                 const u64 text_ofs = header->GetTextOffset();
                 const u64 text_size = header->GetTextSize();
@@ -205,27 +189,33 @@ namespace sts::ro::impl {
                 const u64 rw_ofs = header->GetRwOffset();
                 const u64 rw_size = header->GetRwSize();
                 const u64 bss_size = header->GetBssSize();
-                if (nro_size != expected_nro_size || bss_size != expected_bss_size) {
-                    return ResultRoInvalidNro;
-                }
-                if ((text_size & 0xFFF) || (ro_size & 0xFFF) || (rw_size & 0xFFF) || (bss_size & 0xFFF)) {
-                    return ResultRoInvalidNro;
-                }
-                if (text_ofs > ro_ofs || ro_ofs > rw_ofs) {
-                    return ResultRoInvalidNro;
-                }
-                if (text_ofs != 0 || text_ofs + text_size != ro_ofs || ro_ofs + ro_size != rw_ofs || rw_ofs + rw_size != nro_size) {
-                    return ResultRoInvalidNro;
-                }
+
+                /* Validate sizes meet expected. */
+                R_UNLESS(nro_size == expected_nro_size, ResultInvalidNro());
+                R_UNLESS(bss_size == expected_bss_size, ResultInvalidNro());
+
+                /* Validate all sizes are aligned. */
+                R_UNLESS(util::IsAligned(text_size, os::MemoryPageSize), ResultInvalidNro());
+                R_UNLESS(util::IsAligned(ro_size,   os::MemoryPageSize), ResultInvalidNro());
+                R_UNLESS(util::IsAligned(rw_size,   os::MemoryPageSize), ResultInvalidNro());
+                R_UNLESS(util::IsAligned(bss_size,  os::MemoryPageSize), ResultInvalidNro());
+
+                /* Validate sections are in order. */
+                R_UNLESS(text_ofs <= ro_ofs, ResultInvalidNro());
+                R_UNLESS(ro_ofs   <= rw_ofs, ResultInvalidNro());
+
+                /* Validate sections are sequential and contiguous. */
+                R_UNLESS(text_ofs == 0,                    ResultInvalidNro());
+                R_UNLESS(text_ofs + text_size == ro_ofs,   ResultInvalidNro());
+                R_UNLESS(ro_ofs + ro_size     == rw_ofs,   ResultInvalidNro());
+                R_UNLESS(rw_ofs + rw_size     == nro_size, ResultInvalidNro());
 
                 /* Verify NRO hash. */
                 R_TRY(this->ValidateHasNroHash(header));
 
                 /* Check if NRO has already been loaded. */
                 const ModuleId *module_id = header->GetModuleId();
-                if (R_SUCCEEDED(this->GetNroInfoByModuleId(nullptr, module_id))) {
-                    return ResultRoAlreadyLoaded;
-                }
+                R_UNLESS(R_FAILED(this->GetNroInfoByModuleId(nullptr, module_id)), ResultAlreadyLoaded());
 
                 /* Apply patches to NRO. */
                 LocateAndApplyIpsPatchesToModule(module_id, reinterpret_cast<u8 *>(map_address), nro_size);
@@ -235,7 +225,7 @@ namespace sts::ro::impl {
                 *out_rx_size = text_size;
                 *out_ro_size = ro_size;
                 *out_rw_size = rw_size;
-                return ResultSuccess;
+                return ResultSuccess();
             }
         };
 
@@ -248,14 +238,13 @@ namespace sts::ro::impl {
         ProcessContext *GetContextById(size_t context_id) {
             if (context_id == InvalidContextId) {
                 return nullptr;
-            } else if (context_id < MaxSessions) {
-                return &g_process_contexts[context_id];
-            } else {
-                std::abort();
             }
+
+            AMS_ASSERT(context_id < MaxSessions);
+            return &g_process_contexts[context_id];
         }
 
-        ProcessContext *GetContextByProcessId(u64 process_id) {
+        ProcessContext *GetContextByProcessId(os::ProcessId process_id) {
             for (size_t i = 0; i < MaxSessions; i++) {
                 if (g_process_contexts[i].process_id == process_id) {
                     return &g_process_contexts[i];
@@ -264,10 +253,11 @@ namespace sts::ro::impl {
             return nullptr;
         }
 
-        size_t AllocateContext(Handle process_handle, u64 process_id) {
+        size_t AllocateContext(Handle process_handle, os::ProcessId process_id) {
             /* Find a free process context. */
             for (size_t i = 0; i < MaxSessions; i++) {
                 ProcessContext *context = &g_process_contexts[i];
+
                 if (!context->in_use) {
                     std::memset(context, 0, sizeof(*context));
                     context->process_id = process_id;
@@ -276,9 +266,8 @@ namespace sts::ro::impl {
                     return i;
                 }
             }
-
             /* Failure to find a free context is actually an abort condition. */
-            std::abort();
+            AMS_ASSERT(false);
         }
 
         void FreeContext(size_t context_id) {
@@ -295,6 +284,14 @@ namespace sts::ro::impl {
                 std::memset(context, 0, sizeof(*context));
                 context->in_use = false;
             }
+        }
+
+        constexpr inline Result ValidateAddressAndSize(u64 address, u64 size) {
+            R_UNLESS(util::IsAligned(address, os::MemoryPageSize), ResultInvalidAddress());
+            R_UNLESS(size != 0,                                    ResultInvalidSize());
+            R_UNLESS(util::IsAligned(size, os::MemoryPageSize),    ResultInvalidSize());
+            R_UNLESS(address < address + size,                     ResultInvalidSize());
+            return ResultSuccess();
         }
 
     }
@@ -318,48 +315,41 @@ namespace sts::ro::impl {
 
     bool ShouldEaseNroRestriction() {
         /* Retrieve whether we should ease restrictions from set:sys. */
-        bool should_ease = false;
-        if (R_FAILED(setsysGetSettingsItemValue("ro", "ease_nro_restriction", &should_ease, sizeof(should_ease)))) {
+        u8 should_ease = 0;
+        if (settings::fwdbg::GetSettingsItemValue(&should_ease, sizeof(should_ease), "ro", "ease_nro_restriction") != sizeof(should_ease)) {
             return false;
         }
 
         /* Nintendo only allows easing restriction on dev, we will allow on production, as well. */
         /* should_ease &= IsDevelopmentFunctionEnabled(); */
-        return should_ease;
+        return should_ease != 0;
     }
 
     /* Context utilities. */
-    Result RegisterProcess(size_t *out_context_id, Handle process_handle, u64 process_id) {
+    Result RegisterProcess(size_t *out_context_id, Handle process_handle, os::ProcessId process_id) {
         /* Validate process handle. */
         {
-            u64 handle_pid = 0;
+            os::ProcessId handle_pid = os::InvalidProcessId;
 
             /* Validate handle is a valid process handle. */
-            if (R_FAILED(svcGetProcessId(&handle_pid, process_handle))) {
-                return ResultRoInvalidProcess;
-            }
+            R_UNLESS(R_SUCCEEDED(os::TryGetProcessId(&handle_pid, process_handle)), ResultInvalidProcess());
 
             /* Validate process id. */
-            if (handle_pid != process_id) {
-                return ResultRoInvalidProcess;
-            }
+            R_UNLESS(handle_pid == process_id, ResultInvalidProcess());
         }
 
         /* Check if a process context already exists. */
-        if (GetContextByProcessId(process_id) != nullptr) {
-            return ResultRoInvalidSession;
-        }
+        R_UNLESS(GetContextByProcessId(process_id) == nullptr, ResultInvalidSession());
 
         *out_context_id = AllocateContext(process_handle, process_id);
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
-    Result ValidateProcess(size_t context_id, u64 process_id) {
+    Result ValidateProcess(size_t context_id, os::ProcessId process_id) {
         const ProcessContext *ctx = GetContextById(context_id);
-        if (ctx == nullptr || ctx->process_id != process_id) {
-            return ResultRoInvalidProcess;
-        }
-        return ResultSuccess;
+        R_UNLESS(ctx != nullptr,                ResultInvalidProcess());
+        R_UNLESS(ctx->process_id == process_id, ResultInvalidProcess());
+        return ResultSuccess();
     }
 
     void UnregisterProcess(size_t context_id) {
@@ -370,20 +360,13 @@ namespace sts::ro::impl {
     Result LoadNrr(size_t context_id, Handle process_h, u64 nrr_address, u64 nrr_size, ModuleType expected_type, bool enforce_type) {
         /* Get context. */
         ProcessContext *context = GetContextById(context_id);
-        if (context == nullptr) {
-            std::abort();
-        }
+        AMS_ASSERT(context != nullptr);
 
-        /* Get title id. */
-        const u64 title_id = context->GetTitleId(process_h);
+        /* Get program id. */
+        const ncm::ProgramId program_id = context->GetProgramId(process_h);
 
         /* Validate address/size. */
-        if (nrr_address & 0xFFF) {
-            return ResultRoInvalidAddress;
-        }
-        if (nrr_size == 0 || (nrr_size & 0xFFF) || !(nrr_address < nrr_address + nrr_size)) {
-            return ResultRoInvalidSize;
-        }
+        R_TRY(ValidateAddressAndSize(nrr_address, nrr_size));
 
         /* Check we have space for a new NRR. */
         NrrInfo *nrr_info = nullptr;
@@ -392,7 +375,7 @@ namespace sts::ro::impl {
         /* Map. */
         NrrHeader *header = nullptr;
         u64 mapped_code_address = 0;
-        R_TRY(MapAndValidateNrr(&header, &mapped_code_address, context->process_handle, title_id, nrr_address, nrr_size, expected_type, enforce_type));
+        R_TRY(MapAndValidateNrr(&header, &mapped_code_address, context->process_handle, program_id, nrr_address, nrr_size, expected_type, enforce_type));
 
         /* Set NRR info. */
         nrr_info->in_use = true;
@@ -401,20 +384,16 @@ namespace sts::ro::impl {
         nrr_info->nrr_heap_size = nrr_size;
         nrr_info->mapped_code_address = mapped_code_address;
 
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result UnloadNrr(size_t context_id, u64 nrr_address) {
         /* Get context. */
         ProcessContext *context = GetContextById(context_id);
-        if (context == nullptr) {
-            std::abort();
-        }
+        AMS_ASSERT(context != nullptr);
 
         /* Validate address. */
-        if (nrr_address & 0xFFF) {
-            return ResultRoInvalidAddress;
-        }
+        R_UNLESS(util::IsAligned(nrr_address, os::MemoryPageSize), ResultInvalidAddress());
 
         /* Check the NRR is loaded. */
         NrrInfo *nrr_info = nullptr;
@@ -433,28 +412,15 @@ namespace sts::ro::impl {
     Result LoadNro(u64 *out_address, size_t context_id, u64 nro_address, u64 nro_size, u64 bss_address, u64 bss_size) {
         /* Get context. */
         ProcessContext *context = GetContextById(context_id);
-        if (context == nullptr) {
-            std::abort();
-        }
+        AMS_ASSERT(context != nullptr);
 
         /* Validate address/size. */
-        if (nro_address & 0xFFF) {
-            return ResultRoInvalidAddress;
-        }
-        if (nro_size == 0 || (nro_size & 0xFFF) || !(nro_address < nro_address + nro_size)) {
-            return ResultRoInvalidSize;
-        }
-        if (bss_address & 0xFFF) {
-            return ResultRoInvalidAddress;
-        }
-        if ((bss_size & 0xFFF) || (bss_size > 0 && !(bss_address < bss_address + bss_size))) {
-            return ResultRoInvalidSize;
-        }
+        R_TRY(ValidateAddressAndSize(nro_address, nro_size));
+        R_TRY(ValidateAddressAndSize(bss_address, bss_size));
 
         const u64 total_size = nro_size + bss_size;
-        if (total_size < nro_size || total_size < bss_size) {
-            return ResultRoInvalidSize;
-        }
+        R_UNLESS(total_size >= nro_size, ResultInvalidSize());
+        R_UNLESS(total_size >= bss_size, ResultInvalidSize());
 
         /* Check we have space for a new NRO. */
         NroInfo *nro_info = nullptr;
@@ -468,34 +434,34 @@ namespace sts::ro::impl {
         R_TRY(MapNro(&nro_info->base_address, context->process_handle, nro_address, nro_size, bss_address, bss_size));
 
         /* Validate the NRO (parsing region extents). */
-        u64 rx_size, ro_size, rw_size;
-        R_TRY_CLEANUP(context->ValidateNro(&nro_info->module_id, &rx_size, &ro_size, &rw_size, nro_info->base_address, nro_size, bss_size), {
-            UnmapNro(context->process_handle, nro_info->base_address, nro_address, bss_address, bss_size, nro_size, 0);
-        });
+        u64 rx_size = 0, ro_size = 0, rw_size = 0;
+        {
+            auto unmap_guard = SCOPE_GUARD { UnmapNro(context->process_handle, nro_info->base_address, nro_address, bss_address, bss_size, nro_size, 0); };
+            R_TRY(context->ValidateNro(&nro_info->module_id, &rx_size, &ro_size, &rw_size, nro_info->base_address, nro_size, bss_size));
+            unmap_guard.Cancel();
+        }
 
         /* Set NRO perms. */
-        R_TRY_CLEANUP(SetNroPerms(context->process_handle, nro_info->base_address, rx_size, ro_size, rw_size + bss_size), {
-            UnmapNro(context->process_handle, nro_info->base_address, nro_address, bss_address, bss_size, rx_size + ro_size, rw_size);
-        });
+        {
+            auto unmap_guard = SCOPE_GUARD { UnmapNro(context->process_handle, nro_info->base_address, nro_address, bss_address, bss_size, rx_size + ro_size, rw_size); };
+            R_TRY(SetNroPerms(context->process_handle, nro_info->base_address, rx_size, ro_size, rw_size + bss_size));
+            unmap_guard.Cancel();
+        }
 
         nro_info->code_size = rx_size + ro_size;
         nro_info->rw_size = rw_size;
         nro_info->in_use = true;
         *out_address = nro_info->base_address;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result UnloadNro(size_t context_id, u64 nro_address) {
         /* Get context. */
         ProcessContext *context = GetContextById(context_id);
-        if (context == nullptr) {
-            std::abort();
-        }
+        AMS_ASSERT(context != nullptr);
 
         /* Validate address. */
-        if (nro_address & 0xFFF) {
-            return ResultRoInvalidAddress;
-        }
+        R_UNLESS(util::IsAligned(nro_address, os::MemoryPageSize), ResultInvalidAddress());
 
         /* Check the NRO is loaded. */
         NroInfo *nro_info = nullptr;
@@ -512,7 +478,7 @@ namespace sts::ro::impl {
     }
 
     /* Debug service implementations. */
-    Result GetProcessModuleInfo(u32 *out_count, LoaderModuleInfo *out_infos, size_t max_out_count, u64 process_id) {
+    Result GetProcessModuleInfo(u32 *out_count, LoaderModuleInfo *out_infos, size_t max_out_count, os::ProcessId process_id) {
         size_t count = 0;
         const ProcessContext *context = GetContextByProcessId(process_id);
         if (context != nullptr) {
@@ -531,7 +497,7 @@ namespace sts::ro::impl {
         }
 
         *out_count = static_cast<u32>(count);
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
 }

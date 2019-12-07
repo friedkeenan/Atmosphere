@@ -18,7 +18,7 @@
 
 #include "sm_types.hpp"
 
-namespace sts::sm {
+namespace ams::sm {
 
     /* Ordinary SM API. */
     Result GetService(Service *out, ServiceName name);
@@ -28,5 +28,18 @@ namespace sts::sm {
     /* Atmosphere extensions. */
     Result HasService(bool *out, ServiceName name);
     Result WaitService(ServiceName name);
+
+    /* Scoped session access. */
+    namespace impl {
+
+        void DoWithSessionImpl(void (*Invoker)(void *), void *Function);
+
+    }
+
+    template<typename F>
+    NX_CONSTEXPR void DoWithSession(F f) {
+        auto invoker = +[](void *func) { (*(F *)func)(); };
+        impl::DoWithSessionImpl(invoker, &f);
+    }
 
 }

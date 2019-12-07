@@ -13,10 +13,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include "boot_i2c_utils.hpp"
 
-namespace sts::boot {
+namespace ams::boot {
 
     namespace {
 
@@ -27,23 +26,24 @@ namespace sts::boot {
 
             u64 cur_time = 0;
             while (true) {
-                R_TRY_CLEANUP(f(), {
-                    cur_time += retry_interval;
-                    if (cur_time < timeout) {
-                        svcSleepThread(retry_interval);
-                        continue;
-                    }
-                });
-                return ResultSuccess;
+                const auto retry_result = f();
+                R_UNLESS(R_FAILED(retry_result), ResultSuccess());
+
+                cur_time += retry_interval;
+                if (cur_time < timeout) {
+                    svcSleepThread(retry_interval);
+                    continue;
+                }
+
+                return retry_result;
             }
         }
 
     }
 
     Result ReadI2cRegister(i2c::driver::Session &session, u8 *dst, size_t dst_size, const u8 *cmd, size_t cmd_size) {
-        if (dst == nullptr || dst_size == 0 || cmd == nullptr || cmd_size == 0) {
-            std::abort();
-        }
+        AMS_ASSERT(dst != nullptr && dst_size > 0);
+        AMS_ASSERT(cmd != nullptr && cmd_size > 0);
 
         u8 cmd_list[i2c::CommandListFormatter::MaxCommandListSize];
 
@@ -55,9 +55,8 @@ namespace sts::boot {
     }
 
     Result WriteI2cRegister(i2c::driver::Session &session, const u8 *src, size_t src_size, const u8 *cmd, size_t cmd_size) {
-        if (src == nullptr || src_size == 0 || cmd == nullptr || cmd_size == 0) {
-            std::abort();
-        }
+        AMS_ASSERT(src != nullptr && src_size > 0);
+        AMS_ASSERT(cmd != nullptr && cmd_size > 0);
 
         u8 cmd_list[0x20];
 

@@ -13,34 +13,36 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <switch.h>
-#include "../ncm/ncm_types.hpp"
+#include "cfg_types.hpp"
+#include "cfg_locale_types.hpp"
+#include "../sm/sm_types.hpp"
 
-namespace sts::cfg {
+namespace ams::cfg {
 
     /* Privileged Process configuration. */
     bool IsInitialProcess();
-    void GetInitialProcessRange(u64 *out_min, u64 *out_max);
+    void GetInitialProcessRange(os::ProcessId *out_min, os::ProcessId *out_max);
 
     /* SD card configuration. */
+    bool IsSdCardRequiredServicesReady();
+    void WaitSdCardRequiredServicesReady();
     bool IsSdCardInitialized();
     void WaitSdCardInitialized();
 
     /* Override key utilities. */
-    bool IsTitleOverrideKeyHeld(ncm::TitleId title_id);
-    bool IsHblOverrideKeyHeld(ncm::TitleId title_id);
-    void GetOverrideKeyHeldStatus(bool *out_hbl, bool *out_title, ncm::TitleId title_id);
-    bool IsCheatEnableKeyHeld(ncm::TitleId title_id);
+    OverrideStatus CaptureOverrideStatus(ncm::ProgramId program_id);
+
+    /* Locale utilities. */
+    OverrideLocale GetOverrideLocale(ncm::ProgramId program_id);
 
     /* Flag utilities. */
-    bool HasFlag(ncm::TitleId title_id, const char *flag);
-    bool HasTitleSpecificFlag(ncm::TitleId title_id, const char *flag);
+    bool HasFlag(const sm::MitmProcessInfo &process_info, const char *flag);
+    bool HasContentSpecificFlag(ncm::ProgramId program_id, const char *flag);
     bool HasGlobalFlag(const char *flag);
 
     /* HBL Configuration utilities. */
-    bool IsHblTitleId(ncm::TitleId title_id);
+    bool IsHblProgramId(ncm::ProgramId program_id);
     bool HasHblFlag(const char *flag);
     const char *GetHblPath();
 

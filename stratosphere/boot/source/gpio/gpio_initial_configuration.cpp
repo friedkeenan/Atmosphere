@@ -19,7 +19,7 @@
 #include "gpio_initial_configuration.hpp"
 #include "gpio_utils.hpp"
 
-namespace sts::gpio {
+namespace ams::gpio {
 
     namespace {
 
@@ -41,14 +41,14 @@ namespace sts::gpio {
         const InitialConfig *configs = nullptr;
         size_t num_configs = 0;
         const auto hw_type = spl::GetHardwareType();
-        const FirmwareVersion fw_ver = GetRuntimeFirmwareVersion();
+        const auto hos_ver = hos::GetVersion();
 
         /* Choose GPIO map. */
-        if (fw_ver >= FirmwareVersion_200) {
+        if (hos_ver >= hos::Version_200) {
             switch (hw_type) {
                 case spl::HardwareType::Icosa:
                     {
-                        if (fw_ver >= FirmwareVersion_400) {
+                        if (hos_ver >= hos::Version_400) {
                             configs = InitialConfigsIcosa4x;
                             num_configs = NumInitialConfigsIcosa4x;
                         } else {
@@ -69,9 +69,8 @@ namespace sts::gpio {
                     configs = InitialConfigsIowa;
                     num_configs = NumInitialConfigsIowa;
                     break;
-                default:
-                    /* Unknown hardware type, we can't proceed. */
-                    std::abort();
+                /* Unknown hardware type, we can't proceed. */
+                AMS_UNREACHABLE_DEFAULT_CASE();
             }
         } else {
             /* Until 2.0.0, the GPIO map for Icosa was used for all hardware types. */
@@ -80,9 +79,7 @@ namespace sts::gpio {
         }
 
         /* Ensure we found an appropriate config. */
-        if (configs == nullptr) {
-            std::abort();
-        }
+        AMS_ASSERT(configs != nullptr);
 
         for (size_t i = 0; i < num_configs; i++) {
             /* Configure the GPIO. */

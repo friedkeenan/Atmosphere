@@ -15,19 +15,21 @@
  */
 
 #pragma once
-#include <switch.h>
 #include <stratosphere.hpp>
 
-#include "../utils.hpp"
+namespace ams::mitm::bpc {
 
-class BpcAtmosphereService : public IServiceObject {
-    enum class CommandId {
-        RebootToFatalError = 65000,
+    class AtmosphereService final : public sf::IServiceObject {
+        private:
+            enum class CommandId {
+                RebootToFatalError = 65000,
+            };
+        private:
+            void RebootToFatalError(const ams::FatalErrorContext &ctx);
+        public:
+            DEFINE_SERVICE_DISPATCH_TABLE {
+                MAKE_SERVICE_COMMAND_META(RebootToFatalError),
+            };
     };
-    private:
-        Result RebootToFatalError(InBuffer<AtmosphereFatalErrorContext> ctx);
-    public:
-        DEFINE_SERVICE_DISPATCH_TABLE {
-            MAKE_SERVICE_COMMAND_META(BpcAtmosphereService, RebootToFatalError),
-        };
-};
+
+}

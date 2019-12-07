@@ -13,12 +13,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <switch.h>
 #include <stratosphere.hpp>
 
-namespace sts::fatal::srv {
+namespace ams::fatal::srv {
 
     class FatalConfig {
         private:
@@ -90,7 +88,8 @@ namespace sts::fatal::srv {
             }
     };
 
-    IEvent *GetFatalDirtyEvent();
+    os::WaitableHolder *GetFatalDirtyWaitableHolder();
+    void OnFatalDirtyEvent();
     const FatalConfig &GetFatalConfig();
 
 }

@@ -13,18 +13,16 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <switch.h>
 #include <stratosphere.hpp>
 
-namespace sts::fatal::srv {
+namespace ams::fatal::srv {
 
     class FatalEventManager {
         private:
             static constexpr size_t NumFatalEvents = 3;
 
-            HosMutex lock;
+            os::Mutex lock;
             size_t num_events_gotten = 0;
             Event events[NumFatalEvents];
         public:

@@ -13,11 +13,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include "boot_change_voltage.hpp"
 #include "boot_pmc_wrapper.hpp"
 
-namespace sts::boot {
+namespace ams::boot {
 
     namespace {
 

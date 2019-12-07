@@ -13,14 +13,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <optional>
-#include <switch.h>
-
+#include "../os.hpp"
 #include "kvdb_bounded_string.hpp"
 
-namespace sts::kvdb {
+namespace ams::kvdb {
 
     class FileKeyValueStore {
         NON_COPYABLE(FileKeyValueStore);
@@ -66,7 +63,7 @@ namespace sts::kvdb {
                     bool Contains(const void *key, size_t key_size);
             };
         private:
-            HosMutex lock;
+            os::Mutex lock;
             Path dir_path;
             Cache cache;
         private:
@@ -95,10 +92,8 @@ namespace sts::kvdb {
                 static_assert(std::is_pod<Value>::value && !std::is_pointer<Value>::value, "Invalid FileKeyValueStore Value!");
                 size_t size = 0;
                 R_TRY(this->Get(&size, out_value, sizeof(Value), key));
-                if (size < sizeof(Value)) {
-                    std::abort();
-                }
-                return ResultSuccess;
+                AMS_ASSERT(size >= sizeof(Value));
+                return ResultSuccess();
             }
 
             template<typename Key>

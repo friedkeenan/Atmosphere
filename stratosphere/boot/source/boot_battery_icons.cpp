@@ -13,11 +13,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include "boot_battery_icons.hpp"
 #include "boot_display.hpp"
 
-namespace sts::boot {
+namespace ams::boot {
 
     namespace {
 

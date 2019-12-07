@@ -15,13 +15,9 @@
  */
 
 #pragma once
-#include <switch.h>
-#include <stratosphere.hpp>
-#include <stratosphere/updater/updater_types.hpp>
-
 #include "updater_bis_management.hpp"
 
-namespace sts::updater {
+namespace ams::updater {
 
     class BisSave {
         public:

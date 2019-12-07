@@ -13,14 +13,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <switch.h>
-#include <stratosphere.hpp>
 #include <sys/stat.h>
-
 #include "updater_paths.hpp"
 
-namespace sts::updater {
+namespace ams::updater {
 
     namespace {
 
@@ -34,9 +30,7 @@ namespace sts::updater {
         constexpr const char *Package2PathA = "bip:/a/package2";
 
         const char *ChooseCandidatePath(const char * const *candidates, size_t num_candidates) {
-            if (num_candidates == 0) {
-                std::abort();
-            }
+            AMS_ASSERT(num_candidates > 0);
 
             for (size_t i = 0; i < num_candidates; i++) {
                 struct stat buf;
@@ -74,8 +68,7 @@ namespace sts::updater {
                     constexpr const char *candidates[] = {BctPathA, BctPathNx};
                     return ChooseCandidatePath(candidates, util::size(candidates));
                 }
-            default:
-                std::abort();
+            AMS_UNREACHABLE_DEFAULT_CASE();
         }
     }
 
@@ -91,8 +84,7 @@ namespace sts::updater {
                     constexpr const char *candidates[] = {Package1PathA, Package1PathNx};
                     return ChooseCandidatePath(candidates, util::size(candidates));
                 }
-            default:
-                std::abort();
+            AMS_UNREACHABLE_DEFAULT_CASE();
         }
     }
 
@@ -108,8 +100,7 @@ namespace sts::updater {
                     constexpr const char *candidates[] = {Package2PathA, Package2PathNx};
                     return ChooseCandidatePath(candidates, util::size(candidates));
                 }
-            default:
-                std::abort();
+            AMS_UNREACHABLE_DEFAULT_CASE();
         }
     }
 

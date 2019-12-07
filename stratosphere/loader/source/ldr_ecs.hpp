@@ -13,17 +13,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <switch.h>
 #include <stratosphere.hpp>
-#include <stratosphere/ldr.hpp>
 
-namespace sts::ldr::ecs {
+namespace ams::ldr::ecs {
 
     /* External Content Source API. */
-    const char *Get(ncm::TitleId title_id);
-    Result Set(Handle *out, ncm::TitleId title_id);
-    Result Clear(ncm::TitleId title_id);
+    const char *Get(ncm::ProgramId program_id);
+    Result Set(Handle *out, ncm::ProgramId program_id);
+    Result Clear(ncm::ProgramId program_id);
 
 }

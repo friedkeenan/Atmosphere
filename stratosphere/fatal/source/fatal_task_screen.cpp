@@ -13,14 +13,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <atmosphere/version.h>
-
 #include "fatal_task_screen.hpp"
 #include "fatal_config.hpp"
 #include "fatal_font.hpp"
 
-namespace sts::fatal::srv {
+namespace ams::fatal::srv {
 
     /* Include Atmosphere logo into its own anonymous namespace. */
 
@@ -52,7 +49,7 @@ namespace sts::fatal::srv {
         }
 
         /* Task definitions. */
-        class ShowFatalTask : public ITask {
+        class ShowFatalTask : public ITaskWithStack<0x8000> {
             private:
                 ViDisplay display;
                 ViLayer layer;
@@ -68,12 +65,9 @@ namespace sts::fatal::srv {
                 virtual const char *GetName() const override {
                     return "ShowFatal";
                 }
-                virtual size_t GetStackSize() const override {
-                    return 0x8000;
-                }
         };
 
-        class BacklightControlTask : public ITask {
+        class BacklightControlTask : public ITaskWithDefaultStack {
             private:
                 void TurnOnBacklight();
             public:
@@ -92,16 +86,14 @@ namespace sts::fatal::srv {
             ViDisplay temp_display;
             /* Try to open the display. */
             R_TRY_CATCH(viOpenDisplay("Internal", &temp_display)) {
-                R_CATCH(ResultViNotFound) {
-                    return ResultSuccess;
-                }
+                R_CONVERT(vi::ResultNotFound, ResultSuccess());
             } R_END_TRY_CATCH;
 
             /* Guarantee we close the display. */
             ON_SCOPE_EXIT { viCloseDisplay(&temp_display); };
 
             /* Turn on the screen. */
-            if (GetRuntimeFirmwareVersion() >= FirmwareVersion_300) {
+            if (hos::GetVersion() >= hos::Version_300) {
                 R_TRY(viSetDisplayPowerState(&temp_display, ViPowerState_On));
             } else {
                 /* Prior to 3.0.0, the ViPowerState enum was different (0 = Off, 1 = On). */
@@ -111,16 +103,14 @@ namespace sts::fatal::srv {
             /* Set alpha to 1.0f. */
             R_TRY(viSetDisplayAlpha(&temp_display, 1.0f));
 
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
         Result ShowFatalTask::SetupDisplayExternal() {
             ViDisplay temp_display;
             /* Try to open the display. */
             R_TRY_CATCH(viOpenDisplay("External", &temp_display)) {
-                R_CATCH(ResultViNotFound) {
-                    return ResultSuccess;
-                }
+                R_CONVERT(vi::ResultNotFound, ResultSuccess());
             } R_END_TRY_CATCH;
 
             /* Guarantee we close the display. */
@@ -129,7 +119,7 @@ namespace sts::fatal::srv {
             /* Set alpha to 1.0f. */
             R_TRY(viSetDisplayAlpha(&temp_display, 1.0f));
 
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
         Result ShowFatalTask::PrepareScreenForDrawing() {
@@ -147,11 +137,11 @@ namespace sts::fatal::srv {
             R_TRY(viOpenDefaultDisplay(&this->display));
 
             /* Reset the display magnification to its default value. */
-            u32 display_width, display_height;
+            s32 display_width, display_height;
             R_TRY(viGetDisplayLogicalResolution(&this->display, &display_width, &display_height));
 
             /* viSetDisplayMagnification was added in 3.0.0. */
-            if (GetRuntimeFirmwareVersion() >= FirmwareVersion_300) {
+            if (hos::GetVersion() >= hos::Version_300) {
                 R_TRY(viSetDisplayMagnification(&this->display, 0, 0, display_width, display_height));
             }
 
@@ -163,10 +153,10 @@ namespace sts::fatal::srv {
                 /* Display a layer of 1280 x 720 at 1.5x magnification */
                 /* NOTE: N uses 2 (770x400) RGBA4444 buffers (tiled buffer + linear). */
                 /* We use a single 1280x720 tiled RGB565 buffer. */
-                constexpr u32 raw_width = FatalScreenWidth;
-                constexpr u32 raw_height = FatalScreenHeight;
-                constexpr u32 layer_width = ((raw_width) * 3) / 2;
-                constexpr u32 layer_height = ((raw_height) * 3) / 2;
+                constexpr s32 raw_width = FatalScreenWidth;
+                constexpr s32 raw_height = FatalScreenHeight;
+                constexpr s32 layer_width = ((raw_width) * 3) / 2;
+                constexpr s32 layer_height = ((raw_height) * 3) / 2;
 
                 const float layer_x = static_cast<float>((display_width - layer_width) / 2);
                 const float layer_y = static_cast<float>((display_height - layer_height) / 2);
@@ -184,22 +174,20 @@ namespace sts::fatal::srv {
                 R_TRY(framebufferCreate(&this->fb, &this->win, raw_width, raw_height, PIXEL_FORMAT_RGB_565, 1));
             }
 
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
         Result ShowFatalTask::ShowFatal() {
             const FatalConfig &config = GetFatalConfig();
 
             /* Prepare screen for drawing. */
-            DoWithSmSession([&]() {
+            sm::DoWithSession([&]() {
                 R_ASSERT(PrepareScreenForDrawing());
             });
 
             /* Dequeue a buffer. */
             u16 *tiled_buf = reinterpret_cast<u16 *>(framebufferBegin(&this->fb, NULL));
-            if (tiled_buf == nullptr) {
-                return ResultFatalNullGraphicsBuffer;
-            }
+            R_UNLESS(tiled_buf != nullptr, ResultNullGraphicsBuffer());
 
             /* Let the font manager know about our framebuffer. */
             font::ConfigureFontFramebuffer(tiled_buf, GetPixelOffset);
@@ -220,13 +208,13 @@ namespace sts::fatal::srv {
             /* TODO: Actually draw meaningful shit here. */
             font::SetPosition(32, 64);
             font::SetFontSize(16.0f);
-            font::PrintFormat(config.GetErrorMessage(), R_MODULE(this->context->error_code), R_DESCRIPTION(this->context->error_code), this->context->error_code);
+            font::PrintFormat(config.GetErrorMessage(), this->context->result.GetModule(), this->context->result.GetDescription(), this->context->result.GetValue());
             font::AddSpacingLines(0.5f);
-            font::PrintFormatLine("Title: %016lX", static_cast<u64>(this->context->title_id));
+            font::PrintFormatLine(  "Program:  %016lX", static_cast<u64>(this->context->program_id));
             font::AddSpacingLines(0.5f);
-            font::PrintFormatLine(u8"Firmware: %s (Atmosphère %u.%u.%u-%s)", config.GetFirmwareVersion().display_version, CURRENT_ATMOSPHERE_VERSION, GetAtmosphereGitRevision());
+            font::PrintFormatLine(u8"Firmware: %s (Atmosphère %u.%u.%u-%s)", config.GetFirmwareVersion().display_version, ATMOSPHERE_RELEASE_VERSION, ams::GetGitRevision());
             font::AddSpacingLines(1.5f);
-            if (this->context->error_code != ResultAtmosphereVersionMismatch) {
+            if (!exosphere::ResultVersionMismatch::Includes(this->context->result)) {
                 font::Print(config.GetErrorDescription());
             } else {
                 /* Print a special message for atmosphere version mismatch. */
@@ -414,11 +402,10 @@ namespace sts::fatal::srv {
                 }
             }
 
-
             /* Enqueue the buffer. */
             framebufferEnd(&fb);
 
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
         Result ShowFatalTask::Run() {
@@ -434,7 +421,7 @@ namespace sts::fatal::srv {
 
         Result BacklightControlTask::Run() {
             TurnOnBacklight();
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
     }

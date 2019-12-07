@@ -13,11 +13,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <unordered_map>
 #include "ldr_ecs.hpp"
 
-namespace sts::ldr::ecs {
+namespace ams::ldr::ecs {
 
     namespace {
 
@@ -32,8 +30,8 @@ namespace sts::ldr::ecs {
             private:
                 char device_name[DeviceNameSizeMax];
             public:
-                ExternalContentSource(const char *dn){
-                    std::strncpy(this->device_name, dn, sizeof(this->device_name) - 1);
+                ExternalContentSource(const char *dn) {
+                    std::strncpy(this->device_name, dn, sizeof(this->device_name));
                     this->device_name[sizeof(this->device_name) - 1] = '\0';
                 }
 
@@ -51,52 +49,49 @@ namespace sts::ldr::ecs {
     }
 
     /* API. */
-    const char *Get(ncm::TitleId title_id) {
-        auto it = g_map.find(static_cast<u64>(title_id));
+    const char *Get(ncm::ProgramId program_id) {
+        auto it = g_map.find(static_cast<u64>(program_id));
         if (it == g_map.end()) {
             return nullptr;
         }
         return it->second.GetDeviceName();
     }
 
-    Result Set(Handle *out, ncm::TitleId title_id) {
-        if (g_map.size() >= MaxExternalContentSourceCount) {
-            /* TODO: Is this an appropriate error? */
-            return ResultLoaderTooManyArguments;
-        }
+    Result Set(Handle *out, ncm::ProgramId program_id) {
+        /* TODO: Is this an appropriate error? */
+        R_UNLESS(g_map.size() < MaxExternalContentSourceCount, ldr::ResultTooManyArguments());
 
         /* Clear any sources. */
-        R_ASSERT(Clear(title_id));
+        R_ASSERT(Clear(program_id));
 
         /* Generate mountpoint. */
         char device_name[DeviceNameSizeMax];
-        std::snprintf(device_name, DeviceNameSizeMax, "ecs-%016lx", static_cast<u64>(title_id));
+        std::snprintf(device_name, DeviceNameSizeMax, "ecs-%016lx", static_cast<u64>(program_id));
 
         /* Create session. */
-        AutoHandle server, client;
+        os::ManagedHandle server, client;
         R_TRY(svcCreateSession(server.GetPointer(), client.GetPointer(), 0, 0));
 
         /* Create service. */
         Service srv;
         serviceCreate(&srv, client.Move());
         FsFileSystem fs = { srv };
+        auto fs_guard = SCOPE_GUARD { fsFsClose(&fs); };
 
         /* Try to mount. */
-        if (fsdevMountDevice(device_name, fs) == -1) {
-            serviceClose(&srv);
-            return ResultFsMountNameAlreadyExists;
-        }
+        R_UNLESS(fsdevMountDevice(device_name, fs) >= 0, fs::ResultMountNameAlreadyExists());
+        fs_guard.Cancel();
 
         /* Add to map. */
-        g_map.emplace(static_cast<u64>(title_id), device_name);
+        g_map.emplace(static_cast<u64>(program_id), device_name);
         *out = server.Move();
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
-    Result Clear(ncm::TitleId title_id) {
+    Result Clear(ncm::ProgramId program_id) {
         /* Delete if present. */
-        g_map.erase(static_cast<u64>(title_id));
-        return ResultSuccess;
+        g_map.erase(static_cast<u64>(program_id));
+        return ResultSuccess();
     }
 
 }

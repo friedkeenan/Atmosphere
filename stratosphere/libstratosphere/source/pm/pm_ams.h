@@ -11,8 +11,17 @@
 extern "C" {
 #endif
 
-Result pminfoAtmosphereGetProcessId(u64 *out_pid, u64 tid);
-Result pminfoAtmosphereHasLaunchedTitle(bool *out, u64 tid);
+typedef struct {
+    u64 keys_held;
+    u64 flags;
+} CfgOverrideStatus;
+
+Result pminfoAtmosphereGetProcessId(u64 *out_pid, u64 program_id);
+Result pminfoAtmosphereHasLaunchedProgram(bool *out, u64 program_id);
+Result pminfoAtmosphereGetProcessInfo(NcmProgramLocation *loc_out, CfgOverrideStatus *status_out, u64 pid);
+
+Result pmdmntAtmosphereGetProcessInfo(Handle *out, NcmProgramLocation *loc_out, CfgOverrideStatus *status_out, u64 pid);
+Result pmdmntAtmosphereGetCurrentLimitInfo(u64 *out_cur, u64 *out_lim, u32 group, u32 resource);
 
 #ifdef __cplusplus
 }

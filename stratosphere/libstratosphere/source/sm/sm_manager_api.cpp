@@ -13,23 +13,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <switch.h>
-#include <stratosphere.hpp>
-#include <stratosphere/sm.hpp>
-#include <stratosphere/sm/sm_manager_api.hpp>
-
+#include "sm_utils.hpp"
 #include "smm_ams.h"
 
-namespace sts::sm::manager {
+namespace ams::sm::manager {
 
     /* Manager API. */
-    Result RegisterProcess(u64 process_id, ncm::TitleId title_id, const void *acid, size_t acid_size, const void *aci, size_t aci_size) {
-        return smManagerAtmosphereRegisterProcess(process_id, static_cast<u64>(title_id), acid, acid_size, aci, aci_size);
+    Result RegisterProcess(os::ProcessId process_id, ncm::ProgramId program_id, cfg::OverrideStatus status, const void *acid, size_t acid_size, const void *aci, size_t aci_size) {
+        static_assert(sizeof(status) == sizeof(CfgOverrideStatus), "CfgOverrideStatus definition");
+        return smManagerAtmosphereRegisterProcess(static_cast<u64>(process_id), static_cast<u64>(program_id), reinterpret_cast<const CfgOverrideStatus *>(&status), acid, acid_size, aci, aci_size);
     }
 
-    Result UnregisterProcess(u64 process_id) {
-        return smManagerUnregisterProcess(process_id);
+    Result UnregisterProcess(os::ProcessId process_id) {
+        return smManagerUnregisterProcess(static_cast<u64>(process_id));
     }
 
     /* Atmosphere extensions. */
@@ -38,7 +34,7 @@ namespace sts::sm::manager {
     }
 
     Result HasMitm(bool *out, ServiceName name) {
-        return smManagerAtmosphereHasMitm(out, name.name);
+        return smManagerAtmosphereHasMitm(out, impl::ConvertName(name));
     }
 
 }

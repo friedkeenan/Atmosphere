@@ -14,12 +14,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <switch.h>
 #include <stratosphere.hpp>
-#include <stratosphere/cfg.hpp>
-#include <stratosphere/sm.hpp>
 
-namespace sts::cfg {
+namespace ams::cfg {
 
     namespace {
 
@@ -33,38 +30,55 @@ namespace sts::cfg {
         constexpr size_t NumRequiredServicesForSdCardAccess = util::size(RequiredServicesForSdCardAccess);
 
         /* SD card globals. */
-        HosMutex g_sd_card_lock;
+        os::Mutex g_sd_card_lock;
         bool g_sd_card_initialized = false;
         FsFileSystem g_sd_card_filesystem = {};
 
         /* SD card helpers. */
-        Result TryInitializeSdCard() {
+        Result CheckSdCardServicesReady() {
             for (size_t i = 0; i < NumRequiredServicesForSdCardAccess; i++) {
                 bool service_present = false;
                 R_TRY(sm::HasService(&service_present, RequiredServicesForSdCardAccess[i]));
                 if (!service_present) {
-                    return ResultFsSdCardNotPresent;
+                    return fs::ResultSdCardNotPresent();
                 }
             }
 
-            R_ASSERT(fsMountSdcard(&g_sd_card_filesystem));
-            g_sd_card_initialized = true;
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
-        void InitializeSdCard() {
+        void WaitSdCardServicesReadyImpl() {
             for (size_t i = 0; i < NumRequiredServicesForSdCardAccess; i++) {
                 R_ASSERT(sm::WaitService(RequiredServicesForSdCardAccess[i]));
             }
-            R_ASSERT(fsMountSdcard(&g_sd_card_filesystem));
+        }
+
+        Result TryInitializeSdCard() {
+            R_TRY(CheckSdCardServicesReady());
+            R_ASSERT(fsOpenSdCardFileSystem(&g_sd_card_filesystem));
+            g_sd_card_initialized = true;
+            return ResultSuccess();
+        }
+
+        void InitializeSdCard() {
+            WaitSdCardServicesReadyImpl();
+            R_ASSERT(fsOpenSdCardFileSystem(&g_sd_card_filesystem));
             g_sd_card_initialized = true;
         }
 
     }
 
     /* SD card utilities. */
+    bool IsSdCardRequiredServicesReady() {
+        return R_SUCCEEDED(CheckSdCardServicesReady());
+    }
+
+    void WaitSdCardRequiredServicesReady() {
+        WaitSdCardServicesReadyImpl();
+    }
+
     bool IsSdCardInitialized() {
-        std::scoped_lock<HosMutex> lk(g_sd_card_lock);
+        std::scoped_lock lk(g_sd_card_lock);
 
         if (!g_sd_card_initialized) {
             if (R_SUCCEEDED(TryInitializeSdCard())) {
@@ -75,7 +89,7 @@ namespace sts::cfg {
     }
 
     void WaitSdCardInitialized() {
-        std::scoped_lock<HosMutex> lk(g_sd_card_lock);
+        std::scoped_lock lk(g_sd_card_lock);
 
         InitializeSdCard();
     }

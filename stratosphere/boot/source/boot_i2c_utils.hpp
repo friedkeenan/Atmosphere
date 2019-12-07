@@ -13,14 +13,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #pragma once
-#include <switch.h>
 #include <stratosphere.hpp>
 
 #include "i2c/driver/i2c_api.hpp"
 
-namespace sts::boot {
+namespace ams::boot {
 
     /* I2C Utilities. */
     Result ReadI2cRegister(i2c::driver::Session &session, u8 *dst, size_t dst_size, const u8 *cmd, size_t cmd_size);

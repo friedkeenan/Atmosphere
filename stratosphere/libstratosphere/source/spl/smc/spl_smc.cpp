@@ -13,12 +13,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <switch.h>
 #include <stratosphere.hpp>
-#include <stratosphere/spl/smc/spl_smc.hpp>
 
-namespace sts::spl::smc {
+namespace ams::spl::smc {
 
     Result SetConfig(SplConfigItem which, const u64 *value, size_t num_qwords) {
         SecmonArgs args;
@@ -306,6 +303,75 @@ namespace sts::spl::smc {
         args.X[7] = source.data64[1];
         svcCallSecureMonitor(&args);
 
+        return static_cast<Result>(args.X[0]);
+    }
+
+    /* Atmosphere functions. */
+    namespace {
+
+        enum class IramCopyDirection {
+            FromIram = 0,
+            ToIram = 1,
+        };
+
+        inline Result AtmosphereIramCopy(uintptr_t dram_address, uintptr_t iram_address, size_t size, IramCopyDirection direction) {
+            SecmonArgs args;
+            args.X[0] = static_cast<u64>(FunctionId::AtmosphereIramCopy);
+            args.X[1] = dram_address;
+            args.X[2] = iram_address;
+            args.X[3] = size;
+            args.X[4] = static_cast<u64>(direction);
+            svcCallSecureMonitor(&args);
+
+            return static_cast<Result>(args.X[0]);
+        }
+
+    }
+
+    Result AtmosphereCopyToIram(uintptr_t iram_dst, const void *dram_src, size_t size) {
+        return AtmosphereIramCopy(reinterpret_cast<uintptr_t>(dram_src), iram_dst, size, IramCopyDirection::ToIram);
+    }
+
+    Result AtmosphereCopyFromIram(void *dram_dst, uintptr_t iram_src, size_t size) {
+        return AtmosphereIramCopy(reinterpret_cast<uintptr_t>(dram_dst), iram_src, size, IramCopyDirection::FromIram);
+    }
+
+    Result AtmosphereReadWriteRegister(uint64_t address, uint32_t mask, uint32_t value, uint32_t *out_value) {
+        SecmonArgs args;
+        args.X[0] = static_cast<u64>(FunctionId::AtmosphereReadWriteRegister);
+        args.X[1] = address;
+        args.X[2] = mask;
+        args.X[3] = value;
+        svcCallSecureMonitor(&args);
+
+        *out_value = static_cast<uint32_t>(args.X[1]);
+        return static_cast<Result>(args.X[0]);
+    }
+
+    Result AtmosphereWriteAddress(void *dst, const void *src, size_t size) {
+        AMS_ASSERT(size <= sizeof(u64));
+
+        SecmonArgs args;
+        args.X[0] = static_cast<u64>(FunctionId::AtmosphereWriteAddress);
+        args.X[1] = reinterpret_cast<uintptr_t>(dst);
+        __builtin_memcpy(&args.X[1], src, size);
+        args.X[3] = size;
+        svcCallSecureMonitor(&args);
+
+        return static_cast<Result>(args.X[0]);
+    }
+
+    Result AtmosphereGetEmummcConfig(void *out_config, void *out_paths, u32 storage_id) {
+        const u64 paths = reinterpret_cast<u64>(out_paths);
+        AMS_ASSERT(util::IsAligned(paths, os::MemoryPageSize));
+
+        SecmonArgs args = {};
+        args.X[0] = static_cast<u64>(FunctionId::AtmosphereGetEmummcConfig);
+        args.X[1] = storage_id;
+        args.X[2] = paths;
+        svcCallSecureMonitor(&args);
+
+        std::memcpy(out_config, &args.X[1], sizeof(args) - sizeof(args.X[0]));
         return static_cast<Result>(args.X[0]);
     }
 

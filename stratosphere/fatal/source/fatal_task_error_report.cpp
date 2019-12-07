@@ -13,16 +13,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <cstdio>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <atmosphere/version.h>
-
 #include "fatal_config.hpp"
 #include "fatal_task_error_report.hpp"
 
-namespace sts::fatal::srv {
+namespace ams::fatal::srv {
 
     namespace {
 
@@ -53,7 +49,7 @@ namespace sts::fatal::srv {
         }
 
         /* Task definition. */
-        class ErrorReportTask : public ITask {
+        class ErrorReportTask : public ITaskWithDefaultStack {
             private:
                 void SaveReportToSdCard();
             public:
@@ -80,18 +76,18 @@ namespace sts::fatal::srv {
             }
 
             /* Open report file. */
-            snprintf(file_path, sizeof(file_path) - 1, "sdmc:/atmosphere/fatal_reports/%011lu_%016lx.log", timestamp, static_cast<u64>(this->context->title_id));
+            snprintf(file_path, sizeof(file_path) - 1, "sdmc:/atmosphere/fatal_reports/%011lu_%016lx.log", timestamp, static_cast<u64>(this->context->program_id));
             FILE *f_report = fopen(file_path, "w");
             if (f_report != NULL) {
                 ON_SCOPE_EXIT { fclose(f_report); };
 
                 fprintf(f_report, "Atmosphère Fatal Report (v1.0):\n");
-                fprintf(f_report, "Result:                          0x%X (2%03d-%04d)\n\n", this->context->error_code, R_MODULE(this->context->error_code), R_DESCRIPTION(this->context->error_code));
-                fprintf(f_report, "Title ID:                        %016lx\n", static_cast<u64>(this->context->title_id));
+                fprintf(f_report, "Result:                          0x%X (2%03d-%04d)\n\n", this->context->result.GetValue(), this->context->result.GetModule(), this->context->result.GetDescription());
+                fprintf(f_report, "Program ID:                      %016lx\n", static_cast<u64>(this->context->program_id));
                 if (strlen(this->context->proc_name)) {
                     fprintf(f_report, "Process Name:                    %s\n", this->context->proc_name);
                 }
-                fprintf(f_report, u8"Firmware:                        %s (Atmosphère %u.%u.%u-%s)\n", GetFatalConfig().GetFirmwareVersion().display_version, CURRENT_ATMOSPHERE_VERSION, GetAtmosphereGitRevision());
+                fprintf(f_report, u8"Firmware:                        %s (Atmosphère %u.%u.%u-%s)\n", GetFatalConfig().GetFirmwareVersion().display_version, ATMOSPHERE_RELEASE_VERSION, ams::GetGitRevision());
 
                 if (this->context->cpu_ctx.architecture == CpuContext::Architecture_Aarch32) {
                     fprintf(f_report, "General Purpose Registers:\n");
@@ -121,7 +117,7 @@ namespace sts::fatal::srv {
             }
 
             if (this->context->stack_dump_size) {
-                snprintf(file_path, sizeof(file_path) - 1, "sdmc:/atmosphere/fatal_reports/dumps/%011lu_%016lx.bin", timestamp, static_cast<u64>(this->context->title_id));
+                snprintf(file_path, sizeof(file_path) - 1, "sdmc:/atmosphere/fatal_reports/dumps/%011lu_%016lx.bin", timestamp, static_cast<u64>(this->context->program_id));
                 FILE *f_stackdump = fopen(file_path, "wb");
                 if (f_stackdump == NULL) { return; }
                 ON_SCOPE_EXIT { fclose(f_stackdump); };
@@ -144,7 +140,7 @@ namespace sts::fatal::srv {
             /* Signal we're done with our job. */
             eventFire(const_cast<Event *>(&this->context->erpt_event));
 
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
     }

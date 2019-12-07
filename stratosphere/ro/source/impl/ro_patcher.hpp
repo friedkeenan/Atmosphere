@@ -15,10 +15,9 @@
  */
 
 #pragma once
-#include <switch.h>
-#include <stratosphere/ro.hpp>
+#include <stratosphere.hpp>
 
-namespace sts::ro::impl {
+namespace ams::ro::impl {
 
     /* Apply IPS patches. */
     void LocateAndApplyIpsPatchesToModule(const ModuleId *module_id, u8 *mapped_nro, size_t mapped_size);

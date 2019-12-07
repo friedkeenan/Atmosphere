@@ -15,16 +15,19 @@
  */
 
 #pragma once
-
 #include "ldr_types.hpp"
 
-namespace sts::ldr::pm {
+namespace ams::ldr::pm {
 
     /* Process Manager API. */
     Result CreateProcess(Handle *out, PinId pin_id, u32 flags, Handle reslimit);
-    Result GetProgramInfo(ProgramInfo *out, const ncm::TitleLocation &loc);
-    Result PinTitle(PinId *out, const ncm::TitleLocation &loc);
-    Result UnpinTitle(PinId pin_id);
-    Result HasLaunchedTitle(bool *out, ncm::TitleId title_id);
+    Result GetProgramInfo(ProgramInfo *out, const ncm::ProgramLocation &loc);
+    Result PinProgram(PinId *out, const ncm::ProgramLocation &loc);
+    Result UnpinProgram(PinId pin_id);
+    Result HasLaunchedProgram(bool *out, ncm::ProgramId program_id);
+
+    /* Atmosphere extension API. */
+    Result AtmosphereGetProgramInfo(ProgramInfo *out, cfg::OverrideStatus *out_status, const ncm::ProgramLocation &loc);
+    Result AtmospherePinProgram(PinId *out, const ncm::ProgramLocation &loc, const cfg::OverrideStatus &status);
 
 }

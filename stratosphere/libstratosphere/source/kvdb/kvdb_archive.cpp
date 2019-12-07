@@ -15,9 +15,8 @@
  */
 
 #include <stratosphere.hpp>
-#include <stratosphere/kvdb/kvdb_archive.hpp>
 
-namespace sts::kvdb {
+namespace ams::kvdb {
 
     namespace {
 
@@ -32,10 +31,8 @@ namespace sts::kvdb {
             u32 entry_count;
 
             Result Validate() const {
-                if (std::memcmp(this->magic, ArchiveHeaderMagic, sizeof(ArchiveHeaderMagic)) != 0) {
-                    return ResultKvdbInvalidKeyValue;
-                }
-                return ResultSuccess;
+                R_UNLESS(std::memcmp(this->magic, ArchiveHeaderMagic, sizeof(ArchiveHeaderMagic)) == 0, ResultInvalidKeyValue());
+                return ResultSuccess();
             }
 
             static ArchiveHeader Make(size_t entry_count) {
@@ -53,10 +50,8 @@ namespace sts::kvdb {
             u32 value_size;
 
             Result Validate() const {
-                if (std::memcmp(this->magic, ArchiveEntryMagic, sizeof(ArchiveEntryMagic)) != 0) {
-                    return ResultKvdbInvalidKeyValue;
-                }
-                return ResultSuccess;
+                R_UNLESS(std::memcmp(this->magic, ArchiveEntryMagic, sizeof(ArchiveEntryMagic)) == 0, ResultInvalidKeyValue());
+                return ResultSuccess();
             }
 
             static ArchiveEntryHeader Make(size_t ksz, size_t vsz) {
@@ -74,25 +69,22 @@ namespace sts::kvdb {
     /* Reader functionality. */
     Result ArchiveReader::Peek(void *dst, size_t size) {
         /* Bounds check. */
-        if (this->offset + size > this->buffer.GetSize() || this->offset + size <= this->offset) {
-            return ResultKvdbInvalidKeyValue;
-        }
+        R_UNLESS(this->offset + size <= this->buffer.GetSize(), ResultInvalidKeyValue());
+        R_UNLESS(this->offset + size <= this->offset,           ResultInvalidKeyValue());
 
         std::memcpy(dst, this->buffer.Get() + this->offset, size);
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result ArchiveReader::Read(void *dst, size_t size) {
         R_TRY(this->Peek(dst, size));
         this->offset += size;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result ArchiveReader::ReadEntryCount(size_t *out) {
         /* This should only be called at the start of reading stream. */
-        if (this->offset != 0) {
-            std::abort();
-        }
+        AMS_ASSERT(this->offset == 0);
 
         /* Read and validate header. */
         ArchiveHeader header;
@@ -100,14 +92,12 @@ namespace sts::kvdb {
         R_TRY(header.Validate());
 
         *out = header.entry_count;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result ArchiveReader::GetEntrySize(size_t *out_key_size, size_t *out_value_size) {
         /* This should only be called after ReadEntryCount. */
-        if (this->offset == 0) {
-            std::abort();
-        }
+        AMS_ASSERT(this->offset != 0);
 
         /* Peek the next entry header. */
         ArchiveEntryHeader header;
@@ -116,14 +106,12 @@ namespace sts::kvdb {
 
         *out_key_size = header.key_size;
         *out_value_size = header.value_size;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result ArchiveReader::ReadEntry(void *out_key, size_t key_size, void *out_value, size_t value_size) {
         /* This should only be called after ReadEntryCount. */
-        if (this->offset == 0) {
-            std::abort();
-        }
+        AMS_ASSERT(this->offset != 0);
 
         /* Read the next entry header. */
         ArchiveEntryHeader header;
@@ -131,32 +119,28 @@ namespace sts::kvdb {
         R_TRY(header.Validate());
 
         /* Key size and Value size must be correct. */
-        if (key_size != header.key_size || value_size != header.value_size) {
-            std::abort();
-        }
+        AMS_ASSERT(key_size == header.key_size);
+        AMS_ASSERT(value_size == header.value_size);
 
         R_ASSERT(this->Read(out_key, key_size));
         R_ASSERT(this->Read(out_value, value_size));
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     /* Writer functionality. */
     Result ArchiveWriter::Write(const void *src, size_t size) {
         /* Bounds check. */
-        if (this->offset + size > this->buffer.GetSize() || this->offset + size <= this->offset) {
-            return ResultKvdbInvalidKeyValue;
-        }
+        R_UNLESS(this->offset + size <= this->buffer.GetSize(), ResultInvalidKeyValue());
+        R_UNLESS(this->offset + size <= this->offset,           ResultInvalidKeyValue());
 
         std::memcpy(this->buffer.Get() + this->offset, src, size);
         this->offset += size;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     void ArchiveWriter::WriteHeader(size_t entry_count) {
         /* This should only be called at start of write. */
-        if (this->offset != 0) {
-            std::abort();
-        }
+        AMS_ASSERT(this->offset == 0);
 
         ArchiveHeader header = ArchiveHeader::Make(entry_count);
         R_ASSERT(this->Write(&header, sizeof(header)));
@@ -164,9 +148,7 @@ namespace sts::kvdb {
 
     void ArchiveWriter::WriteEntry(const void *key, size_t key_size, const void *value, size_t value_size) {
         /* This should only be called after writing header. */
-        if (this->offset == 0) {
-            std::abort();
-        }
+        AMS_ASSERT(this->offset != 0);
 
         ArchiveEntryHeader header = ArchiveEntryHeader::Make(key_size, value_size);
         R_ASSERT(this->Write(&header, sizeof(header)));

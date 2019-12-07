@@ -15,10 +15,10 @@
  */
 
 #pragma once
-#include <switch.h>
-#include <cstdlib>
+#include <atmosphere/common.hpp>
+#include "../ncm/ncm_types.hpp"
 
-namespace sts::ro {
+namespace ams::ro {
 
     enum class ModuleType : u8 {
         ForSelf   = 0,
@@ -37,13 +37,13 @@ namespace sts::ro {
         private:
             u32 magic;
             u8  reserved_04[0xC];
-            u64 title_id_mask;
-            u64 title_id_pattern;
+            u64 program_id_mask;
+            u64 program_id_pattern;
             u8  reserved_20[0x10];
             u8  modulus[0x100];
             u8  fixed_key_signature[0x100];
             u8  nrr_signature[0x100];
-            u64 title_id;
+            ncm::ProgramId program_id;
             u32 size;
             u8  type; /* 7.0.0+ */
             u8  reserved_33D[3];
@@ -55,20 +55,18 @@ namespace sts::ro {
                 return this->magic == Magic;
             }
 
-            bool IsTitleIdValid() const {
-                return (this->title_id & this->title_id_mask) == this->title_id_pattern;
+            bool IsProgramIdValid() const {
+                return (static_cast<u64>(this->program_id) & this->program_id_mask) == this->program_id_pattern;
             }
 
             ModuleType GetType() const {
                 const ModuleType type = static_cast<ModuleType>(this->type);
-                if (type >= ModuleType::Count) {
-                    std::abort();
-                }
+                AMS_ASSERT(type < ModuleType::Count);
                 return type;
             }
 
-            u64 GetTitleId() const {
-                return this->title_id;
+            ncm::ProgramId GetProgramId() const {
+                return this->program_id;
             }
 
             u32 GetSize() const {

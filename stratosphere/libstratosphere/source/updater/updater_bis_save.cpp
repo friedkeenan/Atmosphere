@@ -13,13 +13,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <switch.h>
-#include <stratosphere.hpp>
-
 #include "updater_bis_save.hpp"
 
-namespace sts::updater {
+namespace ams::updater {
 
     size_t BisSave::GetVerificationFlagOffset(BootModeType mode) {
         switch (mode) {
@@ -33,13 +29,13 @@ namespace sts::updater {
     }
 
     Result BisSave::Initialize(void *work_buffer, size_t work_buffer_size) {
-        if (work_buffer_size < SaveSize || reinterpret_cast<uintptr_t>(work_buffer) & 0xFFF || work_buffer_size & 0x1FF) {
-            std::abort();
-        }
+        AMS_ASSERT(work_buffer_size >= SaveSize);
+        AMS_ASSERT(util::IsAligned(reinterpret_cast<uintptr_t>(work_buffer), os::MemoryPageSize));
+        AMS_ASSERT(util::IsAligned(work_buffer_size, 0x200));
 
         R_TRY(this->accessor.Initialize());
         this->save_buffer = work_buffer;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     void BisSave::Finalize() {

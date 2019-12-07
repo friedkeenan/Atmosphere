@@ -13,12 +13,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <stratosphere/spl.hpp>
-
 #include "pm_resource_manager.hpp"
 
-namespace sts::pm::resource {
+namespace ams::pm::resource {
 
     namespace {
 
@@ -45,7 +42,7 @@ namespace sts::pm::resource {
         constexpr size_t ExtraSystemMemorySizeAtmosphere = 24 * Megabyte;
 
         /* Globals. */
-        HosMutex g_resource_limit_lock;
+        os::Mutex g_resource_limit_lock;
         Handle g_resource_limit_handles[ResourceLimitGroup_Count];
         spl::MemoryArrangement g_memory_arrangement = spl::MemoryArrangement_Standard;
         u64 g_system_memory_boost_size = 0;
@@ -107,11 +104,15 @@ namespace sts::pm::resource {
         Result SetMemoryResourceLimitLimitValue(ResourceLimitGroup group, u64 new_memory_limit) {
             const u64 old_memory_limit = g_resource_limits[group][LimitableResource_Memory];
             g_resource_limits[group][LimitableResource_Memory] = new_memory_limit;
-            R_TRY_CLEANUP(svcSetResourceLimitLimitValue(GetResourceLimitHandle(group), LimitableResource_Memory, g_resource_limits[group][LimitableResource_Memory]), {
+
+            {
                 /* If we fail, restore the old memory limit. */
-                g_resource_limits[group][LimitableResource_Memory] = old_memory_limit;
-            });
-            return ResultSuccess;
+                auto limit_guard = SCOPE_GUARD { g_resource_limits[group][LimitableResource_Memory] = old_memory_limit; };
+                R_TRY(svcSetResourceLimitLimitValue(GetResourceLimitHandle(group), LimitableResource_Memory, g_resource_limits[group][LimitableResource_Memory]));
+                limit_guard.Cancel();
+            }
+
+            return ResultSuccess();
         }
 
         Result SetResourceLimitLimitValues(ResourceLimitGroup group, u64 new_memory_limit) {
@@ -126,7 +127,7 @@ namespace sts::pm::resource {
                 }
                 R_TRY(svcSetResourceLimitLimitValue(GetResourceLimitHandle(group), resource, g_resource_limits[group][resource]));
             }
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
         inline ResourceLimitGroup GetResourceLimitGroup(const ldr::ProgramInfo *info) {
@@ -182,9 +183,9 @@ namespace sts::pm::resource {
             }
         }
 
-        /* Adjust resource limits based on firmware version. */
-        const auto firmware_version = GetRuntimeFirmwareVersion();
-        if (firmware_version >= FirmwareVersion_400) {
+        /* Adjust resource limits based on hos firmware version. */
+        const auto hos_version = hos::GetVersion();
+        if (hos_version >= hos::Version_400) {
             /* 4.0.0 increased the system thread limit. */
             g_resource_limits[ResourceLimitGroup_System][LimitableResource_Threads] += ExtraSystemThreadCount400;
             /* 4.0.0 also took memory away from applet and gave it to system, for the Standard and StandardForSystemDev profiles. */
@@ -193,21 +194,21 @@ namespace sts::pm::resource {
             g_memory_resource_limits[spl::MemoryArrangement_StandardForSystemDev][ResourceLimitGroup_System] += ExtraSystemMemorySize400;
             g_memory_resource_limits[spl::MemoryArrangement_StandardForSystemDev][ResourceLimitGroup_Applet] -= ExtraSystemMemorySize400;
         }
-        if (firmware_version >= FirmwareVersion_500) {
+        if (hos_version >= hos::Version_500) {
             /* 5.0.0 took more memory away from applet and gave it to system, for the Standard and StandardForSystemDev profiles. */
             g_memory_resource_limits[spl::MemoryArrangement_Standard][ResourceLimitGroup_System] += ExtraSystemMemorySize500;
             g_memory_resource_limits[spl::MemoryArrangement_Standard][ResourceLimitGroup_Applet] -= ExtraSystemMemorySize500;
             g_memory_resource_limits[spl::MemoryArrangement_StandardForSystemDev][ResourceLimitGroup_System] += ExtraSystemMemorySize500;
             g_memory_resource_limits[spl::MemoryArrangement_StandardForSystemDev][ResourceLimitGroup_Applet] -= ExtraSystemMemorySize500;
         }
-        if (firmware_version >= FirmwareVersion_600) {
+        if (hos_version >= hos::Version_600) {
             /* 6.0.0 increased the system event and session limits. */
             g_resource_limits[ResourceLimitGroup_System][LimitableResource_Events]   += ExtraSystemEventCount600;
             g_resource_limits[ResourceLimitGroup_System][LimitableResource_Sessions] += ExtraSystemSessionCount600;
         }
 
         /* 7.0.0+: Calculate the number of extra application threads available. */
-        if (GetRuntimeFirmwareVersion() >= FirmwareVersion_700) {
+        if (hos::GetVersion() >= hos::Version_700) {
             /* See how many threads we have available. */
             u64 total_threads_available = 0;
             R_ASSERT(svcGetResourceLimitLimitValue(&total_threads_available, GetResourceLimitHandle(ResourceLimitGroup_System), LimitableResource_Threads));
@@ -218,16 +219,14 @@ namespace sts::pm::resource {
                                                        g_resource_limits[ResourceLimitGroup_Applet][LimitableResource_Threads];
 
             /* Ensure we don't over-commit threads. */
-            if (total_threads_available < total_threads_allocated) {
-                std::abort();
-            }
+            AMS_ASSERT(total_threads_allocated <= total_threads_available);
 
             /* Set number of extra threads. */
             g_extra_application_threads_available = total_threads_available - total_threads_allocated;
         }
 
         /* Choose and initialize memory arrangement. */
-        if (firmware_version >= FirmwareVersion_600) {
+        if (hos_version >= hos::Version_600) {
             /* 6.0.0 retrieves memory limit information from the kernel, rather than using a hardcoded profile. */
             g_memory_arrangement = spl::MemoryArrangement_Dynamic;
 
@@ -244,9 +243,7 @@ namespace sts::pm::resource {
             const u64 reserved_non_system_size = (application_size + applet_size + ReservedMemorySize600);
 
             /* Ensure there's enough memory for the system region. */
-            if (reserved_non_system_size >= total_memory) {
-                std::abort();
-            }
+            AMS_ASSERT(reserved_non_system_size < total_memory);
 
             g_memory_resource_limits[spl::MemoryArrangement_Dynamic][ResourceLimitGroup_System] = total_memory - reserved_non_system_size;
         } else {
@@ -257,7 +254,7 @@ namespace sts::pm::resource {
         /* We take memory away from applet normally, but away from application on < 3.0.0 to avoid a rare hang on boot. */
         for (size_t i = 0; i < spl::MemoryArrangement_Count; i++) {
             g_memory_resource_limits[i][ResourceLimitGroup_System] += ExtraSystemMemorySizeAtmosphere;
-            if (firmware_version >= FirmwareVersion_300) {
+            if (hos_version >= hos::Version_300) {
                 g_memory_resource_limits[i][ResourceLimitGroup_Applet] -= ExtraSystemMemorySizeAtmosphere;
             } else {
                 g_memory_resource_limits[i][ResourceLimitGroup_Application] -= ExtraSystemMemorySizeAtmosphere;
@@ -273,20 +270,18 @@ namespace sts::pm::resource {
             }
         }
 
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result BoostSystemMemoryResourceLimit(u64 boost_size) {
         /* Don't allow all application memory to be taken away. */
-        if (boost_size > g_memory_resource_limits[g_memory_arrangement][ResourceLimitGroup_Application]) {
-            return ResultPmInvalidSize;
-        }
+        R_UNLESS(boost_size <= g_memory_resource_limits[g_memory_arrangement][ResourceLimitGroup_Application], pm::ResultInvalidSize());
 
         const u64 new_app_size = g_memory_resource_limits[g_memory_arrangement][ResourceLimitGroup_Application] - boost_size;
         {
             std::scoped_lock lk(g_resource_limit_lock);
 
-            if (GetRuntimeFirmwareVersion() >= FirmwareVersion_500) {
+            if (hos::GetVersion() >= hos::Version_500) {
                 /* Starting in 5.0.0, PM does not allow for only one of the sets to fail. */
                 if (boost_size < g_system_memory_boost_size) {
                     R_TRY(svcSetUnsafeLimit(boost_size));
@@ -309,7 +304,7 @@ namespace sts::pm::resource {
             g_system_memory_boost_size = boost_size;
         }
 
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result BoostApplicationThreadResourceLimit() {
@@ -322,7 +317,7 @@ namespace sts::pm::resource {
         g_resource_limits[ResourceLimitGroup_Application][LimitableResource_Threads] = new_thread_count;
         g_extra_application_threads_available = 0;
 
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Handle GetResourceLimitHandle(ResourceLimitGroup group) {
@@ -336,7 +331,7 @@ namespace sts::pm::resource {
     void WaitResourceAvailable(const ldr::ProgramInfo *info) {
         if (GetResourceLimitGroup(info) == ResourceLimitGroup_Application) {
             WaitResourceAvailable(ResourceLimitGroup_Application);
-            if (GetRuntimeFirmwareVersion() >= FirmwareVersion_500) {
+            if (hos::GetVersion() >= hos::Version_500) {
                 WaitApplicationMemoryAvailable();
             }
         }
@@ -344,15 +339,14 @@ namespace sts::pm::resource {
 
     Result GetResourceLimitValues(u64 *out_cur, u64 *out_lim, ResourceLimitGroup group, LimitableResource resource) {
         /* Do not allow out of bounds access. */
-        if (group >= ResourceLimitGroup_Count || resource >= LimitableResource_Count) {
-            std::abort();
-        }
+        AMS_ASSERT(group < ResourceLimitGroup_Count);
+        AMS_ASSERT(resource < LimitableResource_Count);
 
         const Handle reslimit_hnd = GetResourceLimitHandle(group);
         R_TRY(svcGetResourceLimitCurrentValue(out_cur, reslimit_hnd, resource));
         R_TRY(svcGetResourceLimitLimitValue(out_lim, reslimit_hnd, resource));
 
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
 }

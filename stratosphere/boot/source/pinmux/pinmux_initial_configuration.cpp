@@ -13,13 +13,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <stratosphere/spl.hpp>
-
 #include "pinmux_initial_configuration.hpp"
 #include "pinmux_utils.hpp"
 
-namespace sts::pinmux {
+namespace ams::pinmux {
 
     namespace {
 
@@ -60,15 +57,12 @@ namespace sts::pinmux {
                     configs = InitialConfigsIowa;
                     num_configs = NumInitialConfigsIowa;
                     break;
-                default:
-                    /* Unknown hardware type, we can't proceed. */
-                    std::abort();
+                /* Unknown hardware type, we can't proceed. */
+                AMS_UNREACHABLE_DEFAULT_CASE();
             }
 
             /* Ensure we found an appropriate config. */
-            if (configs == nullptr) {
-                std::abort();
-            }
+            AMS_ASSERT(configs != nullptr);
 
             for (size_t i = 0; i < num_configs; i++) {
                 UpdatePad(configs[i].name, configs[i].val, configs[i].mask);

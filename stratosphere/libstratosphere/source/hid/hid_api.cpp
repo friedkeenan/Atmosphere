@@ -13,18 +13,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <set>
-#include <switch.h>
 #include <stratosphere.hpp>
-#include <stratosphere/pm.hpp>
-#include <stratosphere/hid.hpp>
 
-namespace sts::hid {
+namespace ams::hid {
 
     namespace {
 
         /* Global lock. */
-        HosMutex g_hid_lock;
+        os::Mutex g_hid_lock;
         bool g_initialized_hid = false;
 
         /* Helper. */
@@ -39,7 +35,7 @@ namespace sts::hid {
         Result EnsureHidInitialized() {
             if (!g_initialized_hid) {
                 if (!serviceIsActive(hidGetServiceSession())) {
-                    if (!pm::info::HasLaunchedTitle(ncm::TitleId::Hid)) {
+                    if (!pm::info::HasLaunchedProgram(ncm::ProgramId::Hid)) {
                         return MAKERESULT(Module_Libnx, LibnxError_InitFail_HID);
                     }
                     InitializeHid();
@@ -47,13 +43,13 @@ namespace sts::hid {
                 g_initialized_hid = true;
             }
 
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
     }
 
     Result GetKeysHeld(u64 *out) {
-        std::scoped_lock<HosMutex> lk(g_hid_lock);
+        std::scoped_lock lk(g_hid_lock);
 
         R_TRY(EnsureHidInitialized());
 
@@ -64,7 +60,7 @@ namespace sts::hid {
             *out |= hidKeysHeld(static_cast<HidControllerID>(controller));
         }
 
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
 }

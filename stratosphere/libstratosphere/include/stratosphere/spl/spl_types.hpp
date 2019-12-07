@@ -15,10 +15,9 @@
  */
 
 #pragma once
-#include <switch.h>
-#include "../results.hpp"
+#include <atmosphere/common.hpp>
 
-namespace sts::spl {
+namespace ams::spl {
 
     namespace smc {
 
@@ -46,6 +45,12 @@ namespace sts::spl {
             ImportEsKey                   = 0xC300100C,
             DecryptRsaPrivateKey          = 0xC300100D,
             ImportSecureExpModKey         = 0xC300100E,
+
+            /* Atmosphere functions. */
+            AtmosphereIramCopy            = 0xF0000201,
+            AtmosphereReadWriteRegister   = 0xF0000002,
+            AtmosphereWriteAddress        = 0xF0000003,
+            AtmosphereGetEmummcConfig     = 0xF0000404,
         };
 
         enum class Result {
@@ -55,19 +60,20 @@ namespace sts::spl {
             InProgress            = 3,
             NoAsyncOperation      = 4,
             InvalidAsyncOperation = 5,
-            Blacklisted           = 6,
-
-            Max                   = 99,
+            NotPermitted          = 6,
         };
 
-        inline ::Result ConvertResult(Result result) {
-            if (result == Result::Success) {
-                return ResultSuccess;
+        constexpr inline ::ams::Result ConvertResult(Result smc_result) {
+            /* smc::Result::Success becomes ResultSuccess() directly. */
+            R_UNLESS(smc_result != Result::Success, ResultSuccess());
+
+            /* Convert to the list of known SecureMonitorErrors. */
+            const auto converted = R_MAKE_NAMESPACE_RESULT(::ams::spl, static_cast<u32>(smc_result));
+            if (spl::ResultSecureMonitorError::Includes(converted)) {
+                return converted;
             }
-            if (result < Result::Max) {
-                return MAKERESULT(Module_Spl, static_cast<u32>(result));
-            }
-            return ResultSplUnknownSmcResult;
+
+            return spl::ResultUnknownSecureMonitorError();
         }
 
         enum class CipherMode {
@@ -177,3 +183,10 @@ namespace sts::spl {
     #pragma pack(pop)
 
 }
+
+/* Extensions to libnx spl config item enum. */
+constexpr inline SplConfigItem SplConfigItem_ExosphereApiVersion     = static_cast<SplConfigItem>(65000);
+constexpr inline SplConfigItem SplConfigItem_ExosphereNeedsReboot    = static_cast<SplConfigItem>(65001);
+constexpr inline SplConfigItem SplConfigItem_ExosphereNeedsShutdown  = static_cast<SplConfigItem>(65002);
+constexpr inline SplConfigItem SplConfigItem_ExosphereGitCommitHash  = static_cast<SplConfigItem>(65003);
+constexpr inline SplConfigItem SplConfigItem_ExosphereHasRcmBugPatch = static_cast<SplConfigItem>(65004);

@@ -15,22 +15,19 @@
  */
 
 #pragma once
-
-#include <switch.h>
 #include <stratosphere.hpp>
-#include <stratosphere/sm.hpp>
-
 #include "sm_ams.h"
 
-namespace sts::sm::impl {
+namespace ams::sm::impl {
 
     /* Utilities. */
-    HosRecursiveMutex &GetUserSessionMutex();
-    HosRecursiveMutex &GetMitmSessionMutex();
+    os::RecursiveMutex &GetUserSessionMutex();
+    os::RecursiveMutex &GetMitmAcknowledgementSessionMutex();
+    os::RecursiveMutex &GetPerThreadSessionMutex();
 
     template<typename F>
     Result DoWithUserSession(F f) {
-        std::scoped_lock<HosRecursiveMutex &> lk(GetUserSessionMutex());
+        std::scoped_lock<os::RecursiveMutex &> lk(GetUserSessionMutex());
         {
             R_ASSERT(smInitialize());
             ON_SCOPE_EXIT { smExit(); };
@@ -40,14 +37,34 @@ namespace sts::sm::impl {
     }
 
     template<typename F>
-    Result DoWithMitmSession(F f) {
-        std::scoped_lock<HosRecursiveMutex &> lk(GetMitmSessionMutex());
+    Result DoWithMitmAcknowledgementSession(F f) {
+        std::scoped_lock<os::RecursiveMutex &> lk(GetMitmAcknowledgementSessionMutex());
         {
             R_ASSERT(smAtmosphereMitmInitialize());
             ON_SCOPE_EXIT { smAtmosphereMitmExit(); };
 
             return f();
         }
+    }
+
+    template<typename F>
+    Result DoWithPerThreadSession(F f) {
+        Service srv;
+        {
+            std::scoped_lock<os::RecursiveMutex &> lk(GetPerThreadSessionMutex());
+            R_ASSERT(smAtmosphereOpenSession(&srv));
+        }
+        {
+            ON_SCOPE_EXIT { smAtmosphereCloseSession(&srv); };
+            return f(&srv);
+        }
+    }
+
+    NX_CONSTEXPR SmServiceName ConvertName(sm::ServiceName name) {
+        static_assert(sizeof(SmServiceName) == sizeof(sm::ServiceName));
+        SmServiceName ret = {};
+        __builtin_memcpy(&ret, &name, sizeof(sm::ServiceName));
+        return ret;
     }
 
 }

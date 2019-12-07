@@ -15,14 +15,12 @@
  */
 
 #pragma once
-#include <algorithm>
-#include <switch.h>
 #include <sys/stat.h>
 #include "kvdb_auto_buffer.hpp"
 #include "kvdb_archive.hpp"
 #include "kvdb_bounded_string.hpp"
 
-namespace sts::kvdb {
+namespace ams::kvdb {
 
     template<class Key>
     class MemoryKeyValueStore {
@@ -47,9 +45,7 @@ namespace sts::kvdb {
                     Value *GetValuePointer() {
                         /* Size check. Note: Nintendo does not size check. */
                         if constexpr (!std::is_same<Value, void>::value) {
-                            if (sizeof(Value) > this->value_size) {
-                                std::abort();
-                            }
+                            AMS_ASSERT(sizeof(Value) <= this->value_size);
                             /* Ensure we only get pod. */
                             static_assert(std::is_pod<Value>::value, "KeyValueStore Values must be pod");
                         }
@@ -60,9 +56,7 @@ namespace sts::kvdb {
                     const Value *GetValuePointer() const {
                         /* Size check. Note: Nintendo does not size check. */
                         if constexpr (!std::is_same<Value, void>::value) {
-                            if (sizeof(Value) > this->value_size) {
-                                std::abort();
-                            }
+                            AMS_ASSERT(sizeof(Value) <= this->value_size);
                             /* Ensure we only get pod. */
                             static_assert(std::is_pod<Value>::value, "KeyValueStore Values must be pod");
                         }
@@ -125,19 +119,16 @@ namespace sts::kvdb {
 
                     Result Initialize(size_t capacity) {
                         this->entries = reinterpret_cast<Entry *>(std::malloc(sizeof(Entry) * capacity));
-                        if (this->entries == nullptr) {
-                            return ResultKvdbAllocationFailed;
-                        }
+                        R_UNLESS(this->entries != nullptr, ResultAllocationFailed());
                         this->capacity = capacity;
-                        return ResultSuccess;
+                        return ResultSuccess();
                     }
 
                     Result Set(const Key &key, const void *value, size_t value_size) {
                         /* Allocate new value. */
                         void *new_value = std::malloc(value_size);
-                        if (new_value == nullptr) {
-                            return ResultKvdbAllocationFailed;
-                        }
+                        R_UNLESS(new_value != nullptr, ResultAllocationFailed());
+                        auto value_guard = SCOPE_GUARD { std::free(new_value); };
                         std::memcpy(new_value, value, value_size);
 
                         /* Find entry for key. */
@@ -147,43 +138,34 @@ namespace sts::kvdb {
                             std::free(it->GetValuePointer());
                         } else {
                             /* We need to add a new entry. Check we have room, move future keys forward. */
-                            if (this->count >= this->capacity) {
-                                std::free(new_value);
-                                return ResultKvdbKeyCapacityInsufficient;
-                            }
+                            R_UNLESS(this->count < this->capacity, ResultOutOfKeyResource());
                             std::memmove(it + 1, it, sizeof(*it) * (this->end() - it));
                             this->count++;
                         }
 
                         /* Save the new Entry in the map. */
+                        value_guard.Cancel();
                         *it = Entry(key, new_value, value_size);
-                        return ResultSuccess;
+                        return ResultSuccess();
                     }
 
                     Result AddUnsafe(const Key &key, void *value, size_t value_size) {
-                        if (this->count >= this->capacity) {
-                            return ResultKvdbKeyCapacityInsufficient;
-                        }
+                        R_UNLESS(this->count < this->capacity, ResultOutOfKeyResource());
 
                         this->entries[this->count++] = Entry(key, value, value_size);
-                        return ResultSuccess;
+                        return ResultSuccess();
                     }
 
                     Result Remove(const Key &key) {
                         /* Find entry for key. */
                         Entry *it = this->find(key);
+                        R_UNLESS(it != this->end(), ResultKeyNotFound());
 
-                        /* Check if the entry is valid. */
-                        if (it != this->end()) {
-                            /* Free the value, move entries back. */
-                            std::free(it->GetValuePointer());
-                            std::memmove(it, it + 1, sizeof(*it) * (this->end() - (it + 1)));
-                            this->count--;
-                            return ResultSuccess;
-                        }
-
-                        /* If it's not, we didn't remove it. */
-                        return ResultKvdbKeyNotFound;
+                        /* Free the value, move entries back. */
+                        std::free(it->GetValuePointer());
+                        std::memmove(it, it + 1, sizeof(*it) * (this->end() - (it + 1)));
+                        this->count--;
+                        return ResultSuccess();
                     }
 
                     Entry *begin() {
@@ -282,9 +264,8 @@ namespace sts::kvdb {
                 /* Ensure that the passed path is a directory. */
                 {
                     struct stat st;
-                    if (stat(dir, &st) != 0 || !(S_ISDIR(st.st_mode))) {
-                        return ResultFsPathNotFound;
-                    }
+                    R_UNLESS(stat(dir, &st) == 0,   fs::ResultPathNotFound());
+                    R_UNLESS((S_ISDIR(st.st_mode)), fs::ResultPathNotFound());
                 }
 
                 /* Set paths. */
@@ -293,7 +274,7 @@ namespace sts::kvdb {
 
                 /* Initialize our index. */
                 R_TRY(this->index.Initialize(capacity));
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             Result Initialize(size_t capacity) {
@@ -304,7 +285,7 @@ namespace sts::kvdb {
 
                 /* Initialize our index. */
                 R_TRY(this->index.Initialize(capacity));
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             size_t GetCount() const {
@@ -323,9 +304,7 @@ namespace sts::kvdb {
                 /* This is because no archive file = no entries, so we're in the right state. */
                 AutoBuffer buffer;
                 R_TRY_CATCH(this->ReadArchiveFile(&buffer)) {
-                    R_CATCH(ResultFsPathNotFound) {
-                        return ResultSuccess;
-                    }
+                    R_CONVERT(fs::ResultPathNotFound, ResultSuccess());
                 } R_END_TRY_CATCH;
 
                 /* Parse entries from the buffer. */
@@ -342,9 +321,7 @@ namespace sts::kvdb {
 
                         /* Allocate memory for value. */
                         void *new_value = std::malloc(value_size);
-                        if (new_value == nullptr) {
-                            return ResultKvdbAllocationFailed;
-                        }
+                        R_UNLESS(new_value != nullptr, ResultAllocationFailed());
                         auto value_guard = SCOPE_GUARD { std::free(new_value); };
 
                         /* Read key and value. */
@@ -357,7 +334,7 @@ namespace sts::kvdb {
                     }
                 }
 
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             Result Save() {
@@ -400,61 +377,51 @@ namespace sts::kvdb {
             Result Get(size_t *out_size, void *out_value, size_t max_out_size, const Key &key) {
                 /* Find entry. */
                 auto it = this->find(key);
-                if (it == this->end()) {
-                    return ResultKvdbKeyNotFound;
-                }
+                R_UNLESS(it != this->end(), ResultKeyNotFound());
 
                 size_t size = std::min(max_out_size, it->GetValueSize());
                 std::memcpy(out_value, it->GetValuePointer(), size);
                 *out_size = size;
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             template<typename Value = void>
             Result GetValuePointer(Value **out_value, const Key &key) {
                 /* Find entry. */
                 auto it = this->find(key);
-                if (it == this->end()) {
-                    return ResultKvdbKeyNotFound;
-                }
+                R_UNLESS(it != this->end(), ResultKeyNotFound());
 
                 *out_value = it->template GetValuePointer<Value>();
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             template<typename Value = void>
             Result GetValuePointer(const Value **out_value, const Key &key) const {
                 /* Find entry. */
                 auto it = this->find(key);
-                if (it == this->end()) {
-                    return ResultKvdbKeyNotFound;
-                }
+                R_UNLESS(it != this->end(), ResultKeyNotFound());
 
                 *out_value = it->template GetValuePointer<Value>();
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             template<typename Value>
             Result GetValue(Value *out_value, const Key &key) const {
                 /* Find entry. */
                 auto it = this->find(key);
-                if (it == this->end()) {
-                    return ResultKvdbKeyNotFound;
-                }
+                R_UNLESS(it != this->end(), ResultKeyNotFound());
 
                 *out_value = it->template GetValue<Value>();
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             Result GetValueSize(size_t *out_size, const Key &key) const {
                 /* Find entry. */
                 auto it = this->find(key);
-                if (it == this->end()) {
-                    return ResultKvdbKeyNotFound;
-                }
+                R_UNLESS(it != this->end(), ResultKeyNotFound());
 
                 *out_size = it->GetValueSize();
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             Result Remove(const Key &key) {
@@ -511,25 +478,19 @@ namespace sts::kvdb {
                 /* Write data to the temporary archive. */
                 {
                     FILE *f = fopen(this->temp_path, "r+b");
-                    if (f == nullptr) {
-                        return fsdevGetLastResult();
-                    }
+                    R_UNLESS(f != nullptr, fsdevGetLastResult());
                     ON_SCOPE_EXIT { fclose(f); };
 
-                    if (fwrite(buffer.Get(), buffer.GetSize(), 1, f) != 1) {
-                        return fsdevGetLastResult();
-                    }
+                    R_UNLESS(fwrite(buffer.Get(), buffer.GetSize(), 1, f) == 1, fsdevGetLastResult());
                 }
 
                 /* Try to delete the saved archive, but allow deletion failure. */
                 std::remove(this->path.Get());
 
                 /* Rename the path. */
-                if (std::rename(this->temp_path.Get(), this->path.Get()) != 0) {
-                    return fsdevGetLastResult();
-                }
+                R_UNLESS(std::rename(this->temp_path.Get(), this->path.Get()) == 0, fsdevGetLastResult());
 
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             size_t GetArchiveSize() const {
@@ -545,9 +506,7 @@ namespace sts::kvdb {
             Result ReadArchiveFile(AutoBuffer *dst) const {
                 /* Open the file. */
                 FILE *f = fopen(this->path, "rb");
-                if (f == nullptr) {
-                    return fsdevGetLastResult();
-                }
+                R_UNLESS(f != nullptr, fsdevGetLastResult());
                 ON_SCOPE_EXIT { fclose(f); };
 
                 /* Get the archive file size. */
@@ -557,11 +516,9 @@ namespace sts::kvdb {
 
                 /* Make a new buffer, read the file. */
                 R_TRY(dst->Initialize(archive_size));
-                if (fread(dst->Get(), archive_size, 1, f) != 1) {
-                    return fsdevGetLastResult();
-                }
+                R_UNLESS(fread(dst->Get(), archive_size, 1, f) == 1, fsdevGetLastResult());
 
-                return ResultSuccess;
+                return ResultSuccess();
             }
     };
 

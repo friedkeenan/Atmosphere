@@ -15,21 +15,19 @@
  */
 
 #pragma once
-#include <switch.h>
 #include <stratosphere.hpp>
-#include <stratosphere/updater/updater_types.hpp>
 
-namespace sts::updater {
+namespace ams::updater {
 
     class BisAccessor {
         public:
             static constexpr size_t SectorAlignment = 0x200;
         private:
             FsStorage storage = {};
-            FsBisStorageId partition_id;
+            FsBisPartitionId partition_id;
             bool active;
         public:
-            BisAccessor(FsBisStorageId id) : partition_id(id), active(false) { }
+            BisAccessor(FsBisPartitionId id) : partition_id(id), active(false) { }
             ~BisAccessor() {
                 if (this->active) {
                     fsStorageClose(&storage);
@@ -127,35 +125,35 @@ namespace sts::updater {
             using EnumType = typename Meta::EnumType;
             using OffsetSizeType = typename Meta::OffsetSizeType;
         public:
-            PartitionAccessor(FsBisStorageId id) : BisAccessor(id) { }
+            PartitionAccessor(FsBisPartitionId id) : BisAccessor(id) { }
         private:
             constexpr const OffsetSizeType *FindEntry(EnumType which) {
+                const OffsetSizeType *entry = nullptr;
                 for (size_t i = 0; i < Meta::NumEntries; i++) {
                     if (Meta::Entries[i].which == which) {
-                        return &Meta::Entries[i];
+                        entry = &Meta::Entries[i];
+                        break;
                     }
                 }
-                std::abort();
+
+                AMS_ASSERT(entry != nullptr);
+                return entry;
             }
         public:
             Result Read(size_t *out_size, void *dst, size_t size, EnumType which) {
                 const auto entry = FindEntry(which);
-                if (size < entry->size) {
-                    std::abort();
-                }
+                AMS_ASSERT(size >= entry->size);
 
                 R_TRY(BisAccessor::Read(dst, entry->size, entry->offset));
 
                 *out_size = entry->size;
-                return ResultSuccess;
+                return ResultSuccess();
             }
 
             Result Write(const void *src, size_t size, EnumType which) {
                 const auto entry = FindEntry(which);
-                if (size > entry->size || size % BisAccessor::SectorAlignment != 0) {
-                    std::abort();
-                }
-
+                AMS_ASSERT(size <= entry->size);
+                AMS_ASSERT((size % BisAccessor::SectorAlignment) == 0);
                 return BisAccessor::Write(entry->offset, src, size);
             }
 
@@ -184,28 +182,27 @@ namespace sts::updater {
         RepairSub,
     };
 
-    static constexpr FsBisStorageId GetPackage2StorageId(Package2Type which) {
+    static constexpr FsBisPartitionId GetPackage2StorageId(Package2Type which) {
         switch (which) {
             case Package2Type::NormalMain:
-                return FsBisStorageId_BootConfigAndPackage2NormalMain;
+                return FsBisPartitionId_BootConfigAndPackage2Part1;
             case Package2Type::NormalSub:
-                return FsBisStorageId_BootConfigAndPackage2NormalSub;
+                return FsBisPartitionId_BootConfigAndPackage2Part2;
             case Package2Type::SafeMain:
-                return FsBisStorageId_BootConfigAndPackage2SafeMain;
+                return FsBisPartitionId_BootConfigAndPackage2Part3;
             case Package2Type::SafeSub:
-                return FsBisStorageId_BootConfigAndPackage2SafeSub;
+                return FsBisPartitionId_BootConfigAndPackage2Part4;
             case Package2Type::RepairMain:
-                return FsBisStorageId_BootConfigAndPackage2RepairMain;
+                return FsBisPartitionId_BootConfigAndPackage2Part5;
             case Package2Type::RepairSub:
-                return FsBisStorageId_BootConfigAndPackage2RepairSub;
-            default:
-                std::abort();
+                return FsBisPartitionId_BootConfigAndPackage2Part6;
+            AMS_UNREACHABLE_DEFAULT_CASE();
         }
     }
 
     class Boot0Accessor : public PartitionAccessor<Boot0Meta> {
         public:
-            static constexpr FsBisStorageId PartitionId = FsBisStorageId_Boot0;
+            static constexpr FsBisPartitionId PartitionId = FsBisPartitionId_BootPartition1Root;
             static constexpr size_t BctPubkOffset = 0x210;
             static constexpr size_t BctPubkSize = 0x100;
             static constexpr size_t BctEksOffset = 0x450;
@@ -225,7 +222,7 @@ namespace sts::updater {
 
     class Boot1Accessor : public PartitionAccessor<Boot1Meta> {
         public:
-            static constexpr FsBisStorageId PartitionId = FsBisStorageId_Boot1;
+            static constexpr FsBisPartitionId PartitionId = FsBisPartitionId_BootPartition2Root;
         public:
             Boot1Accessor() : PartitionAccessor<Boot1Meta>(PartitionId) { }
     };

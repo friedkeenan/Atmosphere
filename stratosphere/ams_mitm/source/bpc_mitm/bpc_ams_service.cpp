@@ -13,20 +13,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <mutex>
-#include <switch.h>
-#include <stratosphere.hpp>
 #include "bpc_ams_service.hpp"
-#include "bpcmitm_reboot_manager.hpp"
+#include "bpc_ams_power_utils.hpp"
 
-Result BpcAtmosphereService::RebootToFatalError(InBuffer<AtmosphereFatalErrorContext> ctx) {
-    if (ctx.buffer == nullptr || ctx.num_elements != 1) {
-        return ResultKernelConnectionClosed;
+namespace ams::mitm::bpc {
+
+    void AtmosphereService::RebootToFatalError(const ams::FatalErrorContext &ctx) {
+        bpc::RebootForFatalError(&ctx);
     }
 
-    /* Reboot to fusee with the input context. */
-    BpcRebootManager::RebootForFatalError(ctx.buffer);
-
-    return ResultSuccess;
 }

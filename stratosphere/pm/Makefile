@@ -26,12 +26,12 @@ endif
 #---------------------------------------------------------------------------------
 TARGET		:=	$(notdir $(CURDIR))
 BUILD		:=	build
-SOURCES		:=	source source/impl source/boot2
+SOURCES		:=	source source/impl
 DATA		:=	data
 INCLUDES	:=	include ../../common/include
 EXEFS_SRC	:=	exefs_src
 
-DEFINES	:=	-DRESULT_ABORT_ON_ASSERT -DATMOSPHERE_GIT_BRANCH=\"$(AMSBRANCH)\" -DATMOSPHERE_GIT_REV=\"$(AMSREV)\"
+DEFINES	:= -DATMOSPHERE_GIT_BRANCH=\"$(AMSBRANCH)\" -DATMOSPHERE_GIT_REV=\"$(AMSREV)\"
 
 #---------------------------------------------------------------------------------
 # options for code generation
@@ -41,12 +41,22 @@ ARCH	:=	-march=armv8-a -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS	:=	-g -Wall -O2 -ffunction-sections \
 			$(ARCH) $(DEFINES)
 
-CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -DSM_ENABLE_SMHAX
+CFLAGS	+=	$(INCLUDE) -D__SWITCH__
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++17
 
+CXXWRAPS := -Wl,--wrap,__cxa_pure_virtual \
+			-Wl,--wrap,__cxa_throw \
+			-Wl,--wrap,__cxa_rethrow \
+			-Wl,--wrap,__cxa_allocate_exception \
+			-Wl,--wrap,__cxa_begin_catch \
+			-Wl,--wrap,__cxa_end_catch \
+			-Wl,--wrap,__cxa_call_unexpected \
+			-Wl,--wrap,__cxa_call_terminate \
+			-Wl,--wrap,__gxx_personality_v0
+
 ASFLAGS	:=	-g $(ARCH)
-LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
+LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) $(CXXWRAPS) -Wl,-Map,$(notdir $*.map)
 
 LIBS	:= -lstratosphere -lnx
 

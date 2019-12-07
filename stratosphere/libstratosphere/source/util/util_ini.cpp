@@ -14,13 +14,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <switch.h>
 #include <stratosphere.hpp>
-#include <stratosphere/util.hpp>
-
 #include "ini.h"
 
-namespace sts::util::ini {
+namespace ams::util::ini {
 
     /* Ensure that types are the same for Handler vs ini_handler. */
     static_assert(std::is_same<Handler, ::ini_handler>::value, "Bad ini::Handler definition!");
@@ -33,7 +30,7 @@ namespace sts::util::ini {
             size_t num_left;
 
             explicit FsFileContext(FsFile *f) : f(f), offset(0) {
-                u64 size;
+                s64 size;
                 R_ASSERT(fsFileGetSize(this->f, &size));
                 this->num_left = size_t(size);
             }
@@ -49,10 +46,8 @@ namespace sts::util::ini {
             /* Read as many bytes as we can. */
             size_t try_read = std::min(size_t(num - 1), ctx->num_left);
             size_t actually_read;
-            R_ASSERT(fsFileRead(ctx->f, ctx->offset, str, try_read, FS_READOPTION_NONE, &actually_read));
-            if (actually_read != try_read) {
-                std::abort();
-            }
+            R_ASSERT(fsFileRead(ctx->f, ctx->offset, str, try_read, FsReadOption_None, &actually_read));
+            AMS_ASSERT(actually_read == try_read);
 
             /* Only "read" up to the first \n. */
             size_t offset = actually_read;

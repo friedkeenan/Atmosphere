@@ -13,16 +13,15 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <switch.h>
 #include <stratosphere.hpp>
-#include <stratosphere/pm.hpp>
 
-namespace sts::pm::shell {
+namespace ams::pm::shell {
 
     /* Shell API. */
-    Result WEAK LaunchTitle(u64 *out_process_id, const ncm::TitleLocation &loc, u32 launch_flags) {
-        return pmshellLaunchProcess(launch_flags, static_cast<u64>(loc.title_id), loc.storage_id, out_process_id);
+    Result WEAK LaunchProgram(os::ProcessId *out_process_id, const ncm::ProgramLocation &loc, u32 launch_flags) {
+        static_assert(sizeof(ncm::ProgramLocation) == sizeof(NcmProgramLocation));
+        static_assert(alignof(ncm::ProgramLocation) == alignof(NcmProgramLocation));
+        return pmshellLaunchProgram(launch_flags, reinterpret_cast<const NcmProgramLocation *>(&loc), reinterpret_cast<u64 *>(out_process_id));
     }
 
 }

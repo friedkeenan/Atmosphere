@@ -13,11 +13,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include "creport_modules.hpp"
 #include "creport_utils.hpp"
 
-namespace sts::creport {
+namespace ams::creport {
 
     namespace {
 
@@ -230,7 +229,7 @@ namespace sts::creport {
         }
 
         /* We want to read the last two pages of .rodata. */
-        static u8 s_last_rodata_pages[2 * 0x1000];
+        static u8 s_last_rodata_pages[2 * os::MemoryPageSize];
         const size_t read_size = mi.size >= sizeof(s_last_rodata_pages) ? sizeof(s_last_rodata_pages) : (sizeof(s_last_rodata_pages) / 2);
         if (R_FAILED(svcReadDebugProcessMemory(s_last_rodata_pages, this->debug_handle, mi.addr + mi.size - read_size, read_size))) {
             return;

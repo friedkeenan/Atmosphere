@@ -13,18 +13,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <switch.h>
-#include <stratosphere.hpp>
-
 #include "updater_files.hpp"
 
-namespace sts::updater {
+namespace ams::updater {
 
     Result ReadFile(size_t *out_size, void *dst, size_t dst_size, const char *path) {
         FILE *fp = fopen(path, "rb");
         if (fp == NULL) {
-            return ResultUpdaterInvalidBootImagePackage;
+            return ResultInvalidBootImagePackage();
         }
         ON_SCOPE_EXIT { fclose(fp); };
 
@@ -34,13 +30,13 @@ namespace sts::updater {
             return fsdevGetLastResult();
         }
         *out_size = read_size;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result GetFileHash(size_t *out_size, void *dst_hash, const char *path, void *work_buffer, size_t work_buffer_size) {
         FILE *fp = fopen(path, "rb");
         if (fp == NULL) {
-            return ResultUpdaterInvalidBootImagePackage;
+            return ResultInvalidBootImagePackage();
         }
         ON_SCOPE_EXIT { fclose(fp); };
 
@@ -66,7 +62,7 @@ namespace sts::updater {
 
         sha256ContextGetHash(&sha_ctx, dst_hash);
         *out_size = total_size;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
 }

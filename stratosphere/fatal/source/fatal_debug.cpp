@@ -13,11 +13,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <unordered_map>
 #include "fatal_debug.hpp"
 #include "fatal_config.hpp"
 
-namespace sts::fatal::srv {
+namespace ams::fatal::srv {
 
     namespace {
 
@@ -28,7 +27,7 @@ namespace sts::fatal::srv {
             u64 lr;
         };
 
-        bool IsThreadFatalCaller(u32 error_code, u32 debug_handle, u64 thread_id, u64 thread_tls_addr, ThreadContext *thread_ctx) {
+        bool IsThreadFatalCaller(Result result, u32 debug_handle, u64 thread_id, u64 thread_tls_addr, ThreadContext *thread_ctx) {
             /* Verify that the thread is running or waiting. */
             {
                 u64 _;
@@ -65,40 +64,54 @@ namespace sts::fatal::srv {
                 return false;
             }
 
-            /* HACK: We want to parse the command the fatal caller sent. */
-            /* The easiest way to do this is to copy their TLS over ours, and parse ours. */
-            std::memcpy(armGetTls(), thread_tls, sizeof(thread_tls));
+            /* We want to parse the command the fatal caller sent. */
             {
-                IpcParsedCommand r;
-                if (R_FAILED(ipcParse(&r))) {
-                    return false;
-                }
+                const auto request = hipcParseRequest(thread_tls);
+
+                const struct {
+                    CmifInHeader header;
+                    Result result;
+                } *in_data = decltype(in_data)(request.data.data_words);
+                static_assert(sizeof(*in_data) == 0x14, "InData!");
 
                 /* Fatal command takes in a PID, only one buffer max. */
-                if (!r.HasPid || r.NumStatics || r.NumStaticsOut || r.NumHandles) {
+                if ((request.meta.type != CmifCommandType_Request && request.meta.type != CmifCommandType_RequestWithContext) ||
+                    !request.meta.send_pid ||
+                    request.meta.num_send_statics ||
+                    request.meta.num_recv_statics ||
+                    request.meta.num_recv_buffers ||
+                    request.meta.num_exch_buffers ||
+                    request.meta.num_copy_handles ||
+                    request.meta.num_move_handles ||
+                    request.meta.num_data_words < ((sizeof(*in_data) + 0x10) / sizeof(u32)))
+                {
                     return false;
                 }
 
-                struct {
-                    u32 magic;
-                    u32 version;
-                    u64 cmd_id;
-                    u32 err_code;
-                } *raw = (decltype(raw))(r.Raw);
-
-                if (raw->magic != SFCI_MAGIC) {
+                if (in_data->header.magic != CMIF_IN_HEADER_MAGIC) {
                     return false;
                 }
 
-                if (raw->cmd_id > 2) {
+                if (in_data->header.version > 1) {
                     return false;
                 }
 
-                if (raw->cmd_id != 2 && r.NumBuffers) {
-                    return false;
+                switch (in_data->header.command_id) {
+                    case 0:
+                    case 1:
+                        if (request.meta.num_send_buffers != 0) {
+                            return false;
+                        }
+                        break;
+                    case 2:
+                        if (request.meta.num_send_buffers != 1) {
+                            return false;
+                        }
+                    default:
+                        return false;
                 }
 
-                if (raw->err_code != error_code) {
+                if (in_data->result.GetValue() != result.GetValue()) {
                     return false;
                 }
             }
@@ -154,10 +167,10 @@ namespace sts::fatal::srv {
 
     }
 
-    void TryCollectDebugInformation(ThrowContext *ctx, u64 process_id) {
+    void TryCollectDebugInformation(ThrowContext *ctx, os::ProcessId process_id) {
         /* Try to debug the process. This may fail, if we called into ourself. */
-        AutoHandle debug_handle;
-        if (R_FAILED(svcDebugActiveProcess(debug_handle.GetPointer(), process_id))) {
+        os::ManagedHandle debug_handle;
+        if (R_FAILED(svcDebugActiveProcess(debug_handle.GetPointer(), static_cast<u64>(process_id)))) {
             return;
         }
 
@@ -212,7 +225,7 @@ namespace sts::fatal::srv {
                     continue;
                 }
 
-                if (IsThreadFatalCaller(ctx->error_code, debug_handle.Get(), cur_thread_id, thread_id_to_tls[cur_thread_id], &thread_ctx)) {
+                if (IsThreadFatalCaller(ctx->result, debug_handle.Get(), cur_thread_id, thread_id_to_tls[cur_thread_id], &thread_ctx)) {
                     thread_id = cur_thread_id;
                     found_fatal_caller = true;
                     break;

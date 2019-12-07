@@ -15,10 +15,9 @@
  */
 
 #pragma once
-#include <switch.h>
-#include "../results.hpp"
+#include <atmosphere/common.hpp>
 
-namespace sts::map {
+namespace ams::map {
 
     /* Types. */
     struct AddressSpaceInfo {

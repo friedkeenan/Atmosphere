@@ -13,18 +13,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <switch.h>
-#include <stratosphere.hpp>
-
 #include "updater_bis_management.hpp"
 
-namespace sts::updater {
+namespace ams::updater {
 
     Result BisAccessor::Initialize() {
         R_TRY(fsOpenBisStorage(&this->storage, this->partition_id));
         this->active = true;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     void BisAccessor::Finalize() {
@@ -35,27 +31,22 @@ namespace sts::updater {
     }
 
     Result BisAccessor::Read(void *dst, size_t size, u64 offset) {
-        if (offset % SectorAlignment) {
-            std::abort();
-        }
+        AMS_ASSERT((offset % SectorAlignment) == 0);
         return fsStorageRead(&this->storage, offset, dst, size);
     }
 
     Result BisAccessor::Write(u64 offset, const void *src, size_t size) {
-        if (offset % SectorAlignment) {
-            std::abort();
-        }
+        AMS_ASSERT((offset % SectorAlignment) == 0);
         return fsStorageWrite(&this->storage, offset, src, size);
     }
 
     Result BisAccessor::Write(u64 offset, size_t size, const char *bip_path, void *work_buffer, size_t work_buffer_size) {
-        if (offset % SectorAlignment != 0 || work_buffer_size % SectorAlignment != 0) {
-            std::abort();
-        }
+        AMS_ASSERT((offset % SectorAlignment) == 0);
+        AMS_ASSERT((work_buffer_size % SectorAlignment) == 0);
 
         FILE *bip_fp = fopen(bip_path, "rb");
         if (bip_fp == NULL) {
-            return ResultUpdaterInvalidBootImagePackage;
+            return ResultInvalidBootImagePackage();
         }
         ON_SCOPE_EXIT { fclose(bip_fp); };
 
@@ -68,9 +59,7 @@ namespace sts::updater {
                     return fsdevGetLastResult();
                 }
             }
-            if (written + read_size > size) {
-                std::abort();
-            }
+            AMS_ASSERT(written + read_size <= size);
 
             size_t aligned_size = ((read_size + SectorAlignment - 1) / SectorAlignment) * SectorAlignment;
             R_TRY(this->Write(offset + written, work_buffer, aligned_size));
@@ -80,13 +69,12 @@ namespace sts::updater {
                 break;
             }
         }
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result BisAccessor::Clear(u64 offset, u64 size, void *work_buffer, size_t work_buffer_size) {
-        if (offset % SectorAlignment != 0 || work_buffer_size % SectorAlignment != 0) {
-            std::abort();
-        }
+        AMS_ASSERT((offset % SectorAlignment) == 0);
+        AMS_ASSERT((work_buffer_size % SectorAlignment) == 0);
 
         std::memset(work_buffer, 0, work_buffer_size);
 
@@ -96,13 +84,12 @@ namespace sts::updater {
             R_TRY(this->Write(offset + written, work_buffer, cur_write_size));
             written += cur_write_size;
         }
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result BisAccessor::GetHash(void *dst, u64 offset, u64 size, u64 hash_size, void *work_buffer, size_t work_buffer_size) {
-        if (offset % SectorAlignment != 0 || work_buffer_size % SectorAlignment != 0) {
-            std::abort();
-        }
+        AMS_ASSERT((offset % SectorAlignment) == 0);
+        AMS_ASSERT((work_buffer_size % SectorAlignment) == 0);
 
         Sha256Context sha_ctx;
         sha256ContextCreate(&sha_ctx);
@@ -117,23 +104,17 @@ namespace sts::updater {
         }
         sha256ContextGetHash(&sha_ctx, dst);
 
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     size_t Boot0Accessor::GetBootloaderVersion(void *bct) {
         u32 version = *reinterpret_cast<u32 *>(reinterpret_cast<uintptr_t>(bct) + BctVersionOffset);
-        if (version > BctVersionMax) {
-            std::abort();
-        }
-
+        AMS_ASSERT(version <= BctVersionMax);
         return static_cast<size_t>(version);
     }
 
     size_t Boot0Accessor::GetEksIndex(size_t bootloader_version) {
-        if (bootloader_version > BctVersionMax) {
-            std::abort();
-        }
-
+        AMS_ASSERT(bootloader_version <= BctVersionMax);
         return (bootloader_version > 0) ? bootloader_version - 1 : 0;
     }
 
@@ -150,7 +131,7 @@ namespace sts::updater {
 
     Result Boot0Accessor::UpdateEksManually(void *dst_bct, const void *src_eks) {
         this->CopyEks(dst_bct, src_eks, GetEksIndex(GetBootloaderVersion(dst_bct)));
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result Boot0Accessor::PreserveAutoRcm(void *dst_bct, void *work_buffer, Boot0Partition which) {
@@ -162,7 +143,7 @@ namespace sts::updater {
         void *dst_pubk = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(dst_bct) + BctPubkOffset);
         void *src_pubk = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(work_buffer) + BctPubkOffset);
         std::memcpy(dst_pubk, src_pubk, BctPubkSize);
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
 }

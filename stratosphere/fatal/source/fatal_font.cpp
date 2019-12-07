@@ -13,7 +13,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
@@ -26,7 +25,7 @@
 #define RGB565_GET_G8(c) ((((c >> 5) & 0x3F) << 2) | ((c >> 9) & 3))
 #define RGB565_GET_B8(c) ((((c >> 0) & 0x1F) << 3) | ((c >> 2) & 7))
 
-namespace sts::fatal::srv::font {
+namespace ams::fatal::srv::font {
 
     namespace {
 
@@ -223,7 +222,7 @@ namespace sts::fatal::srv::font {
     }
 
     Result InitializeSharedFont() {
-        size_t total_fonts = 0;
+        s32 total_fonts = 0;
 
         R_TRY(plGetSharedFont(GetFatalConfig().GetLanguageCode(), g_fonts, PlSharedFontType_Total, &total_fonts));
         R_TRY(plGetSharedFontByType(&g_font, PlSharedFontType_Standard));

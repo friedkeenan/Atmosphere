@@ -17,15 +17,14 @@
 #pragma once
 
 #include "sm_types.hpp"
-#include "../ncm/ncm_types.hpp"
 
-namespace sts::sm::mitm {
+namespace ams::sm::mitm {
 
     /* Mitm API. */
     Result InstallMitm(Handle *out_port, Handle *out_query, ServiceName name);
     Result UninstallMitm(ServiceName name);
     Result DeclareFutureMitm(ServiceName name);
-    Result AcknowledgeSession(Service *out_service, u64 *out_pid, ncm::TitleId *out_tid, ServiceName name);
+    Result AcknowledgeSession(Service *out_service, MitmProcessInfo *out_info, ServiceName name);
     Result HasMitm(bool *out, ServiceName name);
     Result WaitMitm(ServiceName name);
 

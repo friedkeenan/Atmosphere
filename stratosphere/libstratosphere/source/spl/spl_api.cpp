@@ -13,11 +13,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include <stratosphere.hpp>
-#include <stratosphere/spl.hpp>
 
-namespace sts::spl {
+namespace ams::spl {
 
     HardwareType GetHardwareType() {
         u64 out_val = 0;
@@ -70,8 +68,7 @@ namespace sts::spl {
             case HardwareType::Hoag:
             case HardwareType::Iowa:
                 return true;
-            default:
-                std::abort();
+            AMS_UNREACHABLE_DEFAULT_CASE();
         }
     }
 

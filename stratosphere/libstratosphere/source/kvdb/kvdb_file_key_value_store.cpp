@@ -14,11 +14,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <sys/stat.h>
 #include <stratosphere.hpp>
-#include <stratosphere/kvdb/kvdb_file_key_value_store.hpp>
 
-namespace sts::kvdb {
+namespace ams::kvdb {
 
     /* Cache implementation. */
     void *FileKeyValueStore::Cache::Allocate(size_t size) {
@@ -40,12 +38,10 @@ namespace sts::kvdb {
         /* If we have memory to work with, ensure it's at least enough for the cache entries. */
         if (this->backing_buffer != nullptr) {
             this->entries = static_cast<decltype(this->entries)>(this->Allocate(sizeof(*this->entries) * this->capacity));
-            if (this->entries == nullptr) {
-                return ResultKvdbBufferInsufficient;
-            }
+            R_UNLESS(this->entries != nullptr, ResultBufferInsufficient());
         }
 
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     void FileKeyValueStore::Cache::Invalidate() {
@@ -57,9 +53,7 @@ namespace sts::kvdb {
         this->backing_buffer_free_offset = 0;
         this->count = 0;
         this->entries = static_cast<decltype(this->entries)>(this->Allocate(sizeof(*this->entries) * this->capacity));
-        if (this->entries == nullptr) {
-            std::abort();
-        }
+        AMS_ASSERT(this->entries != nullptr);
     }
 
     std::optional<size_t> FileKeyValueStore::Cache::TryGet(void *out_value, size_t max_out_size, const void *key, size_t key_size) {
@@ -106,9 +100,7 @@ namespace sts::kvdb {
         }
 
         /* Ensure key size is small enough. */
-        if (key_size > MaxKeySize) {
-            std::abort();
-        }
+        AMS_ASSERT(key_size <= MaxKeySize);
 
         /* If we're at capacity, invalidate the cache. */
         if (this->count == this->capacity) {
@@ -162,15 +154,13 @@ namespace sts::kvdb {
         /* TODO: Nintendo does not validate that the key is valid hex. Should we do this? */
         const size_t file_name_len = file_name.GetLength();
         const size_t key_name_len = file_name_len - FileExtensionLength;
-        if (file_name_len < FileExtensionLength + 2 || !file_name.EndsWith(FileExtension) || key_name_len % 2 != 0) {
-            return ResultKvdbInvalidKeyValue;
-        }
+        R_UNLESS(file_name_len >= FileExtensionLength + 2, ResultInvalidKeyValue());
+        R_UNLESS(file_name.EndsWith(FileExtension),        ResultInvalidKeyValue());
+        R_UNLESS(util::IsAligned(key_name_len, 2),         ResultInvalidKeyValue());
 
         /* Validate that we have space for the converted key. */
         const size_t key_size = key_name_len / 2;
-        if (key_size > max_out_size) {
-            return ResultKvdbBufferInsufficient;
-        }
+        R_UNLESS(key_size <= max_out_size, ResultBufferInsufficient());
 
         /* Convert the hex key back. */
         u8 *out_key = static_cast<u8 *>(_out_key);
@@ -181,7 +171,7 @@ namespace sts::kvdb {
         }
 
         *out_size = key_size;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result FileKeyValueStore::Initialize(const char *dir) {
@@ -192,9 +182,8 @@ namespace sts::kvdb {
         /* Ensure that the passed path is a directory. */
         {
             struct stat st;
-            if (stat(dir, &st) != 0 || !(S_ISDIR(st.st_mode))) {
-                return ResultFsPathNotFound;
-            }
+            R_UNLESS(stat(dir, &st) == 0,   fs::ResultPathNotFound());
+            R_UNLESS((S_ISDIR(st.st_mode)), fs::ResultPathNotFound());
         }
 
         /* Set path. */
@@ -202,23 +191,21 @@ namespace sts::kvdb {
 
         /* Initialize our cache. */
         R_TRY(this->cache.Initialize(cache_buffer, cache_buffer_size, cache_capacity));
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result FileKeyValueStore::Get(size_t *out_size, void *out_value, size_t max_out_size, const void *key, size_t key_size) {
         std::scoped_lock lk(this->lock);
 
         /* Ensure key size is small enough. */
-        if (key_size > MaxKeySize) {
-            return ResultKvdbKeyCapacityInsufficient;
-        }
+        R_UNLESS(key_size <= MaxKeySize, ResultOutOfKeyResource());
 
         /* Try to get from cache. */
         {
             auto size = this->cache.TryGet(out_value, max_out_size, key, key_size);
             if (size) {
                 *out_size = *size;
-                return ResultSuccess;
+                return ResultSuccess();
             }
         }
 
@@ -226,9 +213,7 @@ namespace sts::kvdb {
         FILE *fp = fopen(this->GetPath(key, key_size), "rb");
         if (fp == nullptr) {
             R_TRY_CATCH(fsdevGetLastResult()) {
-                R_CATCH(ResultFsPathNotFound) {
-                    return ResultKvdbKeyNotFound;
-                }
+                R_CONVERT(fs::ResultPathNotFound, ResultKeyNotFound())
             } R_END_TRY_CATCH;
         }
         ON_SCOPE_EXIT { fclose(fp); };
@@ -239,35 +224,29 @@ namespace sts::kvdb {
         fseek(fp, 0, SEEK_SET);
 
         /* Ensure there's enough space for the value. */
-        if (max_out_size < value_size) {
-            return ResultKvdbBufferInsufficient;
-        }
+        R_UNLESS(value_size <= max_out_size, ResultBufferInsufficient());
 
         /* Read the value. */
-        if (fread(out_value, value_size, 1, fp) != 1) {
-            return fsdevGetLastResult();
-        }
+        R_UNLESS(fread(out_value, value_size, 1, fp) == 1, fsdevGetLastResult());
         *out_size = value_size;
 
         /* Cache the newly read value. */
         this->cache.Set(key, key_size, out_value, value_size);
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result FileKeyValueStore::GetSize(size_t *out_size, const void *key, size_t key_size) {
         std::scoped_lock lk(this->lock);
 
         /* Ensure key size is small enough. */
-        if (key_size > MaxKeySize) {
-            return ResultKvdbKeyCapacityInsufficient;
-        }
+        R_UNLESS(key_size <= MaxKeySize, ResultOutOfKeyResource());
 
         /* Try to get from cache. */
         {
             auto size = this->cache.TryGetSize(key, key_size);
             if (size) {
                 *out_size = *size;
-                return ResultSuccess;
+                return ResultSuccess();
             }
         }
 
@@ -275,9 +254,7 @@ namespace sts::kvdb {
         FILE *fp = fopen(this->GetPath(key, key_size), "rb");
         if (fp == nullptr) {
             R_TRY_CATCH(fsdevGetLastResult()) {
-                R_CATCH(ResultFsPathNotFound) {
-                    return ResultKvdbKeyNotFound;
-                }
+                R_CONVERT(fs::ResultPathNotFound, ResultKeyNotFound())
             } R_END_TRY_CATCH;
         }
         ON_SCOPE_EXIT { fclose(fp); };
@@ -285,16 +262,14 @@ namespace sts::kvdb {
         /* Get the value size. */
         fseek(fp, 0, SEEK_END);
         *out_size = ftell(fp);
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result FileKeyValueStore::Set(const void *key, size_t key_size, const void *value, size_t value_size) {
         std::scoped_lock lk(this->lock);
 
         /* Ensure key size is small enough. */
-        if (key_size > MaxKeySize) {
-            return ResultKvdbKeyCapacityInsufficient;
-        }
+        R_UNLESS(key_size <= MaxKeySize, ResultOutOfKeyResource());
 
         /* When the cache contains the key being set, Nintendo invalidates the cache. */
         if (this->cache.Contains(key, key_size)) {
@@ -307,29 +282,23 @@ namespace sts::kvdb {
 
         /* Open the value file. */
         FILE *fp = fopen(key_path, "wb");
-        if (fp == nullptr) {
-            return fsdevGetLastResult();
-        }
+        R_UNLESS(fp != nullptr, fsdevGetLastResult());
         ON_SCOPE_EXIT { fclose(fp); };
 
         /* Write the value file. */
-        if (fwrite(value, value_size, 1, fp) != 1) {
-            return fsdevGetLastResult();
-        }
+        R_UNLESS(fwrite(value, value_size, 1, fp) == 1, fsdevGetLastResult());
 
         /* Flush the value file. */
         fflush(fp);
 
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     Result FileKeyValueStore::Remove(const void *key, size_t key_size) {
         std::scoped_lock lk(this->lock);
 
         /* Ensure key size is small enough. */
-        if (key_size > MaxKeySize) {
-            return ResultKvdbKeyCapacityInsufficient;
-        }
+        R_UNLESS(key_size <= MaxKeySize, ResultOutOfKeyResource());
 
         /* When the cache contains the key being set, Nintendo invalidates the cache. */
         if (this->cache.Contains(key, key_size)) {
@@ -339,13 +308,11 @@ namespace sts::kvdb {
         /* Remove the file. */
         if (std::remove(this->GetPath(key, key_size)) != 0) {
             R_TRY_CATCH(fsdevGetLastResult()) {
-                R_CATCH(ResultFsPathNotFound) {
-                    return ResultKvdbKeyNotFound;
-                }
+                R_CONVERT(fs::ResultPathNotFound, ResultKeyNotFound())
             } R_END_TRY_CATCH;
         }
 
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
 }

@@ -15,13 +15,9 @@
  */
 
 #pragma once
-#include <cstring>
-#include <cstdarg>
-#include <switch.h>
-#include "../defines.hpp"
-#include "../results.hpp"
+#include <atmosphere/common.hpp>
 
-namespace sts::kvdb {
+namespace ams::kvdb {
 
     /* Represents a string with a backing buffer of N bytes. */
     template<size_t N>
@@ -32,9 +28,7 @@ namespace sts::kvdb {
         private:
             /* Utility. */
             static inline void CheckLength(size_t len) {
-                if (len >= N) {
-                    std::abort();
-                }
+                AMS_ASSERT(len < N);
             }
         public:
             /* Constructors. */
@@ -115,9 +109,8 @@ namespace sts::kvdb {
             /* Substring utilities. */
             void GetSubstring(char *dst, size_t dst_size, size_t offset, size_t length) const {
                 /* Make sure output buffer can hold the substring. */
-                if (offset + length > GetLength() || dst_size <= length) {
-                    std::abort();
-                }
+                AMS_ASSERT(offset + length <= GetLength());
+                AMS_ASSERT(dst_size > length);
                 /* Copy substring to dst. */
                 std::strncpy(dst, this->buffer + offset, length);
                 dst[length] = 0;

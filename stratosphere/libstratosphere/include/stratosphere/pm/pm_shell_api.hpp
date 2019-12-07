@@ -19,9 +19,9 @@
 #include "../ldr.hpp"
 #include "pm_types.hpp"
 
-namespace sts::pm::shell {
+namespace ams::pm::shell {
 
     /* Shell API. */
-    Result LaunchTitle(u64 *out_process_id, const ncm::TitleLocation &loc, u32 launch_flags);
+    Result LaunchProgram(os::ProcessId *out_process_id, const ncm::ProgramLocation &loc, u32 launch_flags);
 
 }

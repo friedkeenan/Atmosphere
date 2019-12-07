@@ -13,13 +13,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <stratosphere/cfg.hpp>
 #include "ldr_capabilities.hpp"
 #include "ldr_content_management.hpp"
 #include "ldr_meta.hpp"
 
-namespace sts::ldr {
+namespace ams::ldr {
 
     namespace {
 
@@ -34,35 +32,31 @@ namespace sts::ldr {
         };
 
         /* Global storage. */
-        ncm::TitleId g_cached_title_id;
+        ncm::ProgramId g_cached_program_id;
+        cfg::OverrideStatus g_cached_override_status;
         MetaCache g_meta_cache;
         MetaCache g_original_meta_cache;
 
         /* Helpers. */
         Result ValidateSubregion(size_t allowed_start, size_t allowed_end, size_t start, size_t size, size_t min_size = 0) {
-            if (!(size >= min_size && allowed_start <= start && start <= allowed_end && start + size <= allowed_end)) {
-                return ResultLoaderInvalidMeta;
-            }
-            return ResultSuccess;
+            R_UNLESS(size >= min_size,            ResultInvalidMeta());
+            R_UNLESS(allowed_start <= start,      ResultInvalidMeta());
+            R_UNLESS(start <= allowed_end,        ResultInvalidMeta());
+            R_UNLESS(start + size <= allowed_end, ResultInvalidMeta());
+            return ResultSuccess();
         }
 
         Result ValidateNpdm(const Npdm *npdm, size_t size) {
             /* Validate magic. */
-            if (npdm->magic != Npdm::Magic) {
-                return ResultLoaderInvalidMeta;
-            }
+            R_UNLESS(npdm->magic == Npdm::Magic, ResultInvalidMeta());
 
             /* Validate flags. */
-            if (GetRuntimeFirmwareVersion() >= FirmwareVersion_700) {
-                /* 7.0.0 added 0x10 as a valid bit to NPDM flags. */
-                if (npdm->flags & ~0x1F) {
-                    return ResultLoaderInvalidMeta;
-                }
-            } else {
-                if (npdm->flags & ~0xF) {
-                    return ResultLoaderInvalidMeta;
-                }
+            u32 mask = ~0x1F;
+            if (hos::GetVersion() < hos::Version_700) {
+                /* 7.0.0 added 0x10 as a valid bit to NPDM flags, so before that we only check 0xF. */
+                mask = ~0xF;
             }
+            R_UNLESS(!(npdm->flags & mask), ResultInvalidMeta());
 
             /* Validate Acid extents. */
             R_TRY(ValidateSubregion(sizeof(Npdm), size, npdm->acid_offset, npdm->acid_size, sizeof(Acid)));
@@ -70,14 +64,12 @@ namespace sts::ldr {
             /* Validate Aci extends. */
             R_TRY(ValidateSubregion(sizeof(Npdm), size, npdm->aci_offset, npdm->aci_size, sizeof(Aci)));
 
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
         Result ValidateAcid(const Acid *acid, size_t size) {
             /* Validate magic. */
-            if (acid->magic != Acid::Magic) {
-                return ResultLoaderInvalidMeta;
-            }
+            R_UNLESS(acid->magic == Acid::Magic, ResultInvalidMeta());
 
             /* TODO: Check if retail flag is set if not development hardware. */
 
@@ -86,21 +78,19 @@ namespace sts::ldr {
             R_TRY(ValidateSubregion(sizeof(Acid), size, acid->sac_offset, acid->sac_size));
             R_TRY(ValidateSubregion(sizeof(Acid), size, acid->kac_offset, acid->kac_size));
 
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
         Result ValidateAci(const Aci *aci, size_t size) {
             /* Validate magic. */
-            if (aci->magic != Aci::Magic) {
-                return ResultLoaderInvalidMeta;
-            }
+            R_UNLESS(aci->magic == Aci::Magic, ResultInvalidMeta());
 
             /* Validate Fah, Sac, Kac. */
             R_TRY(ValidateSubregion(sizeof(Aci), size, aci->fah_offset, aci->fah_size));
             R_TRY(ValidateSubregion(sizeof(Aci), size, aci->sac_offset, aci->sac_size));
             R_TRY(ValidateSubregion(sizeof(Aci), size, aci->kac_offset, aci->kac_size));
 
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
         Result LoadMetaFromFile(FILE *f, MetaCache *cache) {
@@ -116,15 +106,12 @@ namespace sts::ldr {
                 fseek(f, 0, SEEK_SET);
 
                 /* Read data into cache buffer. */
-                if (npdm_size > MetaCacheBufferSize || fread(cache->buffer, npdm_size, 1, f) != 1) {
-                    return ResultLoaderTooLargeMeta;
-                }
+                R_UNLESS(npdm_size <= MetaCacheBufferSize,            ResultTooLargeMeta());
+                R_UNLESS(fread(cache->buffer, npdm_size, 1, f) == 1,  ResultTooLargeMeta());
             }
 
             /* Ensure size is big enough. */
-            if (npdm_size < sizeof(Npdm)) {
-                return ResultLoaderInvalidMeta;
-            }
+            R_UNLESS(npdm_size >= sizeof(Npdm), ResultInvalidMeta());
 
             /* Validate the meta. */
             {
@@ -152,37 +139,37 @@ namespace sts::ldr {
                 meta->aci_kac = reinterpret_cast<u8 *>(aci) + aci->kac_offset;
             }
 
-            return ResultSuccess;
+            return ResultSuccess();
         }
 
     }
 
     /* API. */
-    Result LoadMeta(Meta *out_meta, ncm::TitleId title_id) {
+    Result LoadMeta(Meta *out_meta, ncm::ProgramId program_id, const cfg::OverrideStatus &status) {
         FILE *f = nullptr;
 
         /* Try to load meta from file. */
-        R_TRY(OpenCodeFile(f, title_id, MetaFilePath));
+        R_TRY(OpenCodeFile(f, program_id, status, MetaFilePath));
         {
             ON_SCOPE_EXIT { fclose(f); };
             R_TRY(LoadMetaFromFile(f, &g_meta_cache));
         }
 
-        /* Patch meta. Start by setting all title ids to the current title id. */
+        /* Patch meta. Start by setting all program ids to the current program id. */
         Meta *meta = &g_meta_cache.meta;
-        meta->acid->title_id_min = title_id;
-        meta->acid->title_id_max = title_id;
-        meta->aci->title_id = title_id;
+        meta->acid->program_id_min = program_id;
+        meta->acid->program_id_max = program_id;
+        meta->aci->program_id = program_id;
 
         /* For HBL, we need to copy some information from the base meta. */
-        if (cfg::IsHblOverrideKeyHeld(title_id)) {
-            if (R_SUCCEEDED(OpenCodeFileFromBaseExefs(f, title_id, MetaFilePath))) {
+        if (status.IsHbl()) {
+            if (R_SUCCEEDED(OpenCodeFileFromBaseExefs(f, program_id, status, MetaFilePath))) {
                 ON_SCOPE_EXIT { fclose(f); };
                 if (R_SUCCEEDED(LoadMetaFromFile(f, &g_original_meta_cache))) {
                     Meta *o_meta = &g_original_meta_cache.meta;
 
                     /* Fix pool partition. */
-                    if (GetRuntimeFirmwareVersion() >= FirmwareVersion_500) {
+                    if (hos::GetVersion() >= hos::Version_500) {
                         meta->acid->flags = (meta->acid->flags & 0xFFFFFFC3) | (o_meta->acid->flags & 0x0000003C);
                     }
 
@@ -195,23 +182,24 @@ namespace sts::ldr {
         }
 
         /* Set output. */
-        g_cached_title_id = title_id;
+        g_cached_program_id = program_id;
+        g_cached_override_status = status;
         *out_meta = *meta;
 
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
-    Result LoadMetaFromCache(Meta *out_meta, ncm::TitleId title_id) {
-        if (g_cached_title_id != title_id) {
-            return LoadMeta(out_meta, title_id);
+    Result LoadMetaFromCache(Meta *out_meta, ncm::ProgramId program_id, const cfg::OverrideStatus &status) {
+        if (g_cached_program_id != program_id || g_cached_override_status != status) {
+            return LoadMeta(out_meta, program_id, status);
         }
         *out_meta = g_meta_cache.meta;
-        return ResultSuccess;
+        return ResultSuccess();
     }
 
     void InvalidateMetaCache() {
-        /* Set the cached title id back to zero. */
-        g_cached_title_id = {};
+        /* Set the cached program id back to zero. */
+        g_cached_program_id = {};
     }
 
 }
