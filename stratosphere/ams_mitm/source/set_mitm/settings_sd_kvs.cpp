@@ -332,7 +332,7 @@ namespace ams::settings::fwdbg {
 
             /* Controls whether dmnt cheats should be toggled on or off by */
             /* default. 1 = toggled on by default, 0 = toggled off by default. */
-            R_ASSERT(ParseSettingsItemValue("atmosphere", "dmnt_cheats_enabled_by_default", "u8!0x1"));
+            R_ASSERT(ParseSettingsItemValue("atmosphere", "dmnt_cheats_enabled_by_default", "u8!0x0"));
 
             /* Controls whether dmnt should always save cheat toggle state */
             /* for restoration on new game launch. 1 = always save toggles, */
