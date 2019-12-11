@@ -7,7 +7,7 @@ ifneq (, $(strip $(shell git status --porcelain 2>/dev/null)))
     AMSREV := $(AMSREV)-dirty
 endif
 
-COMPONENTS := fusee stratosphere exosphere thermosphere troposphere
+COMPONENTS := fusee stratosphere exosphere thermosphere troposphere libraries
 
 all: $(COMPONENTS)
 
@@ -17,7 +17,7 @@ thermosphere:
 exosphere: thermosphere
 	$(MAKE) -C exosphere all
 
-stratosphere: exosphere
+stratosphere: exosphere libraries
 	$(MAKE) -C stratosphere all
 
 troposphere: stratosphere
@@ -29,18 +29,21 @@ sept: exosphere
 fusee: exosphere stratosphere sept
 	$(MAKE) -C $@ all
 
+libraries:
+	$(MAKE) -C libraries all
+
 clean:
 	$(MAKE) -C fusee clean
 	rm -rf out
 
 dist: all
-	$(eval MAJORVER = $(shell grep '\ATMOSPHERE_RELEASE_VERSION_MAJOR\b' common/include/atmosphere/version.h \
+	$(eval MAJORVER = $(shell grep 'define ATMOSPHERE_RELEASE_VERSION_MAJOR\b' libraries/libvapours/include/vapours/ams/ams_api_version.h \
 		| tr -s [:blank:] \
 		| cut -d' ' -f3))
-	$(eval MINORVER = $(shell grep '\ATMOSPHERE_RELEASE_VERSION_MINOR\b' common/include/atmosphere/version.h \
+	$(eval MINORVER = $(shell grep 'define ATMOSPHERE_RELEASE_VERSION_MINOR\b' libraries/libvapours/include/vapours/ams/ams_api_version.h \
 		| tr -s [:blank:] \
 		| cut -d' ' -f3))
-	$(eval MICROVER = $(shell grep '\ATMOSPHERE_RELEASE_VERSION_MICRO\b' common/include/atmosphere/version.h \
+	$(eval MICROVER = $(shell grep 'define ATMOSPHERE_RELEASE_VERSION_MICRO\b' libraries/libvapours/include/vapours/ams/ams_api_version.h \
 		| tr -s [:blank:] \
 		| cut -d' ' -f3))
 	$(eval AMSVER = $(MAJORVER).$(MINORVER).$(MICROVER)-$(AMSREV))
@@ -67,12 +70,12 @@ dist: all
 	cp sept/sept-secondary/sept-secondary.bin atmosphere-$(AMSVER)/sept/sept-secondary.bin
 	cp sept/sept-secondary/sept-secondary_00.enc atmosphere-$(AMSVER)/sept/sept-secondary_00.enc
 	cp sept/sept-secondary/sept-secondary_01.enc atmosphere-$(AMSVER)/sept/sept-secondary_01.enc
-	cp common/defaults/BCT.ini atmosphere-$(AMSVER)/atmosphere/config/BCT.ini
-	cp common/defaults/override_config.ini atmosphere-$(AMSVER)/atmosphere/config_templates/override_config.ini
-	cp common/defaults/system_settings.ini atmosphere-$(AMSVER)/atmosphere/config_templates/system_settings.ini
-	cp -r common/defaults/kip_patches atmosphere-$(AMSVER)/atmosphere/kip_patches
-	cp -r common/defaults/exefs_patches atmosphere-$(AMSVER)/atmosphere/exefs_patches
-	cp -r common/defaults/hbl_html atmosphere-$(AMSVER)/atmosphere/hbl_html
+	cp config_templates/BCT.ini atmosphere-$(AMSVER)/atmosphere/config/BCT.ini
+	cp config_templates/override_config.ini atmosphere-$(AMSVER)/atmosphere/config_templates/override_config.ini
+	cp config_templates/system_settings.ini atmosphere-$(AMSVER)/atmosphere/config_templates/system_settings.ini
+	cp -r config_templates/kip_patches atmosphere-$(AMSVER)/atmosphere/kip_patches
+	cp -r config_templates/exefs_patches atmosphere-$(AMSVER)/atmosphere/exefs_patches
+	cp -r config_templates/hbl_html atmosphere-$(AMSVER)/atmosphere/hbl_html
 	cp stratosphere/boot2/boot2.nsp atmosphere-$(AMSVER)/atmosphere/contents/0100000000000008/exefs.nsp
 	cp stratosphere/dmnt/dmnt.nsp atmosphere-$(AMSVER)/atmosphere/contents/010000000000000D/exefs.nsp
 	cp stratosphere/eclct.stub/eclct.stub.nsp atmosphere-$(AMSVER)/atmosphere/contents/0100000000000032/exefs.nsp
