@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -18,6 +18,7 @@
 
 #include "os/os_common_types.hpp"
 #include "os/os_memory_common.hpp"
+#include "os/os_tick.hpp"
 #include "os/os_managed_handle.hpp"
 #include "os/os_process_handle.hpp"
 #include "os/os_random.hpp"

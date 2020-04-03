@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -112,8 +112,23 @@ namespace ams::mitm::bpc {
             fsFileRead(&payload_file, 0, g_reboot_payload, sizeof(g_reboot_payload), FsReadOption_None, &actual_size);
         }
 
-        /* TODO: Parse reboot type from settings. */
+        /* NOTE: Preferred reboot type will be parsed from settings later on. */
         g_reboot_type = RebootType::ToPayload;
+
+        return ResultSuccess();
+    }
+
+    Result DetectPreferredRebootFunctionality() {
+        char reboot_type[0x40] = {};
+        settings::fwdbg::GetSettingsItemValue(reboot_type, sizeof(reboot_type) - 1, "atmosphere", "power_menu_reboot_function");
+
+        if (strcasecmp(reboot_type, "stock") == 0 || strcasecmp(reboot_type, "normal") == 0 || strcasecmp(reboot_type, "standard") == 0) {
+            g_reboot_type = RebootType::Standard;
+        } else if (strcasecmp(reboot_type, "rcm") == 0) {
+            g_reboot_type = RebootType::ToRcm;
+        } else if (strcasecmp(reboot_type, "payload") == 0) {
+            g_reboot_type = RebootType::ToPayload;
+        }
 
         return ResultSuccess();
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -51,7 +51,7 @@ namespace ams::os::impl{
         WaitableHolderBase *objects[MaximumHandleCount];
 
         const size_t count = this->BuildHandleArray(object_handles, objects);
-        const u64 end_time = infinite ? U64_MAX : armTicksToNs(armGetSystemTick());
+        const u64 end_time = infinite ? std::numeric_limits<u64>::max() : armTicksToNs(armGetSystemTick());
 
         while (true) {
             this->current_time = armTicksToNs(armGetSystemTick());
@@ -64,7 +64,7 @@ namespace ams::os::impl{
                 index = WaitTimedOut;
             } else {
                 index = this->WaitSynchronization(object_handles, count, min_timeout);
-                AMS_ASSERT(index != WaitInvalid);
+                AMS_ABORT_UNLESS(index != WaitInvalid);
             }
 
             switch (index) {
@@ -105,7 +105,7 @@ namespace ams::os::impl{
             /* svc::ResultInvalidHandle. */
             /* svc::ResultInvalidPointer */
             /* svc::ResultOutOfRange */
-        } R_END_TRY_CATCH_WITH_ASSERT;
+        } R_END_TRY_CATCH_WITH_ABORT_UNLESS;
 
         return index;
     }
@@ -115,7 +115,7 @@ namespace ams::os::impl{
 
         for (WaitableHolderBase &holder_base : this->waitable_list) {
             if (Handle handle = holder_base.GetHandle(); handle != INVALID_HANDLE) {
-                AMS_ASSERT(count < MaximumHandleCount);
+                AMS_ABORT_UNLESS(count < MaximumHandleCount);
 
                 out_handles[count] = handle;
                 out_objects[count] = &holder_base;
@@ -170,7 +170,7 @@ namespace ams::os::impl{
 
         if (this->signaled_holder == nullptr) {
             this->signaled_holder = holder_base;
-            R_ASSERT(svcCancelSynchronization(this->waiting_thread_handle));
+            R_ABORT_UNLESS(svcCancelSynchronization(this->waiting_thread_handle));
         }
     }
 

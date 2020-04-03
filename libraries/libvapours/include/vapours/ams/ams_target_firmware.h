@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -32,3 +32,4 @@
 
 #define ATMOSPHERE_TARGET_FIRMWARE_MIN ATMOSPHERE_TARGET_FIRMWARE_100
 #define ATMOSPHERE_TARGET_FIRMWARE_MAX ATMOSPHERE_TARGET_FIRMWARE_CURRENT
+#define ATMOSPHERE_TARGET_FIRMWARE_COUNT ((ATMOSPHERE_TARGET_FIRMWARE_MAX - ATMOSPHERE_TARGET_FIRMWARE_MIN) + 1)

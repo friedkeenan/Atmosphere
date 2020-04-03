@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -38,27 +38,41 @@ namespace ams::exosphere {
     };
     #undef AMS_DEFINE_TARGET_FIRMWARE_ENUM
 
-    constexpr inline u32 GetVersion(u32 major, u32 minor, u32 micro) {
+    constexpr ALWAYS_INLINE u32 GetVersion(u32 major, u32 minor, u32 micro) {
         return (major << 16) | (minor << 8) | (micro);
     }
 
     struct ApiInfo {
-        u32 major_version;
-        u32 minor_version;
-        u32 micro_version;
-        TargetFirmware target_firmware;
-        u32 master_key_revision;
+        using MasterKeyRevision     = util::BitPack64::Field<0,                           8, u32>;
+        using TargetFirmwareVersion = util::BitPack64::Field<MasterKeyRevision::Next,     8, TargetFirmware>;
+        using MicroVersion          = util::BitPack64::Field<TargetFirmwareVersion::Next, 8, u32>;
+        using MinorVersion          = util::BitPack64::Field<MicroVersion::Next,          8, u32>;
+        using MajorVersion          = util::BitPack64::Field<MinorVersion::Next,          8, u32>;
 
-        constexpr u32 GetVersion() const {
-            return ::ams::exosphere::GetVersion(this->major_version, this->minor_version, this->micro_version);
+        util::BitPack64 value;
+
+        constexpr ALWAYS_INLINE u32 GetVersion() const {
+            return ::ams::exosphere::GetVersion(this->GetMajorVersion(), this->GetMinorVersion(), this->GetMicroVersion());
         }
 
-        constexpr TargetFirmware GetTargetFirmware() const {
-            return this->target_firmware;
+        constexpr ALWAYS_INLINE u32 GetMajorVersion() const {
+            return this->value.Get<MajorVersion>();
         }
 
-        constexpr u32 GetMasterKeyRevision() const {
-            return this->master_key_revision;
+        constexpr ALWAYS_INLINE u32 GetMinorVersion() const {
+            return this->value.Get<MinorVersion>();
+        }
+
+        constexpr ALWAYS_INLINE u32 GetMicroVersion() const {
+            return this->value.Get<MicroVersion>();
+        }
+
+        constexpr ALWAYS_INLINE TargetFirmware GetTargetFirmware() const {
+            return this->value.Get<TargetFirmwareVersion>();
+        }
+
+        constexpr ALWAYS_INLINE u32 GetMasterKeyRevision() const {
+            return this->value.Get<MasterKeyRevision>();
         }
     };
 
@@ -69,12 +83,13 @@ namespace ams {
     struct FatalErrorContext : sf::LargeData, sf::PrefersMapAliasTransferMode {
         static constexpr size_t MaxStackTrace = 0x20;
         static constexpr size_t MaxStackDumpSize = 0x100;
+        static constexpr size_t ThreadLocalSize = 0x100;
         static constexpr size_t NumGprs = 29;
         static constexpr uintptr_t StdAbortMagicAddress = 0x8;
         static constexpr u64       StdAbortMagicValue = 0xA55AF00DDEADCAFEul;
         static constexpr u32       StdAbortErrorDesc = 0xFFE;
         static constexpr u32       DataAbortErrorDesc = 0x101;
-        static constexpr u32       Magic = 0x31454641;
+        static constexpr u32       Magic = util::FourCC<'A', 'F', 'E', '2'>::Code;
 
         u32 magic;
         u32 error_desc;
@@ -99,10 +114,11 @@ namespace ams {
         u64 stack_trace_size;
         u64 stack_dump_size;
         u64 stack_trace[MaxStackTrace];
-        u8 stack_dump[MaxStackDumpSize];
+        u8  stack_dump[MaxStackDumpSize];
+        u8  tls[ThreadLocalSize];
     };
 
-    static_assert(sizeof(FatalErrorContext) == 0x350, "sizeof(FatalErrorContext)");
+    static_assert(sizeof(FatalErrorContext) == 0x450, "sizeof(FatalErrorContext)");
     static_assert(std::is_pod<FatalErrorContext>::value, "FatalErrorContext");
 
 #ifdef ATMOSPHERE_GIT_BRANCH

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -17,7 +17,6 @@
 #include "setmitm_module.hpp"
 #include "set_mitm_service.hpp"
 #include "setsys_mitm_service.hpp"
-#include "settings_sd_kvs.hpp"
 
 namespace ams::mitm::settings {
 
@@ -42,12 +41,9 @@ namespace ams::mitm::settings {
         /* Wait until initialization is complete. */
         mitm::WaitInitialized();
 
-        /* Load settings off the SD card. */
-        ams::settings::fwdbg::InitializeSdCardKeyValueStore();
-
         /* Create mitm servers. */
-        R_ASSERT(g_server_manager.RegisterMitmServer<SetMitmService>(SetMitmServiceName));
-        R_ASSERT(g_server_manager.RegisterMitmServer<SetSysMitmService>(SetSysMitmServiceName));
+        R_ABORT_UNLESS(g_server_manager.RegisterMitmServer<SetMitmService>(SetMitmServiceName));
+        R_ABORT_UNLESS(g_server_manager.RegisterMitmServer<SetSysMitmService>(SetSysMitmServiceName));
 
         /* Loop forever, servicing our services. */
         g_server_manager.LoopProcess();

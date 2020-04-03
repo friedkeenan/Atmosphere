@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -87,7 +87,7 @@ void package2_rebuild_and_copy(package2_header_t *package2, uint32_t target_firm
     }
 
     /* Perform any patches we want to the NX kernel. */
-    package2_patch_kernel(kernel, kernel_size, is_sd_kernel, (void *)&orig_ini1);
+    package2_patch_kernel(kernel, &kernel_size, is_sd_kernel, (void *)&orig_ini1);
 
     /* Ensure we know where embedded INI is if present, and we don't if not. */
     if ((target_firmware < ATMOSPHERE_TARGET_FIRMWARE_800 && orig_ini1 != NULL) ||
@@ -100,7 +100,7 @@ void package2_rebuild_and_copy(package2_header_t *package2, uint32_t target_firm
         package2_get_src_section((void *)&orig_ini1, package2, PACKAGE2_SECTION_INI1);
     } else {
         /* On 8.0.0, place INI1 right after kernelldr for our sanity. */
-        package2->metadata.section_offsets[PACKAGE2_SECTION_INI1] = package2->metadata.section_offsets[PACKAGE2_SECTION_KERNEL] + package2->metadata.section_sizes[PACKAGE2_SECTION_KERNEL];
+        package2->metadata.section_offsets[PACKAGE2_SECTION_INI1] = package2->metadata.section_offsets[PACKAGE2_SECTION_KERNEL] + kernel_size;
     }
 
     /* Perform any patches to the INI1, rebuilding it (This is where our built-in sysmodules will be added.) */

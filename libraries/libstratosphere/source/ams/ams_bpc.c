@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -38,9 +38,9 @@ Service *amsBpcGetServiceSession(void) {
 
 Result amsBpcRebootToFatalError(void *ctx) {
     /* Note: this takes in an sts::ams::FatalErrorContext. */
-    /* static_assert(sizeof() == 0x350) is done at type definition. */
+    /* static_assert(sizeof() == 0x450) is done at type definition. */
     return serviceDispatch(&g_amsBpcSrv, 65000,
-        .buffer_attrs = { SfBufferAttr_Out | SfBufferAttr_HipcMapAlias | SfBufferAttr_FixedSize },
-        .buffers = { { ctx, 0x350 } },
+        .buffer_attrs = { SfBufferAttr_In | SfBufferAttr_HipcMapAlias | SfBufferAttr_FixedSize },
+        .buffers = { { ctx, 0x450 } },
     );
 }

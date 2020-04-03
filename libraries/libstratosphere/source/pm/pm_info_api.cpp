@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -49,7 +49,7 @@ namespace ams::pm::info {
         return pminfoAtmosphereGetProcessInfo(reinterpret_cast<NcmProgramLocation *>(out_loc), reinterpret_cast<CfgOverrideStatus *>(out_status), static_cast<u64>(process_id));
     }
 
-    Result WEAK HasLaunchedProgram(bool *out, ncm::ProgramId program_id) {
+    Result WEAK_SYMBOL HasLaunchedProgram(bool *out, ncm::ProgramId program_id) {
         std::scoped_lock lk(g_info_lock);
 
         if (g_cached_launched_programs.find(static_cast<u64>(program_id)) != g_cached_launched_programs.end()) {
@@ -69,7 +69,7 @@ namespace ams::pm::info {
 
     bool HasLaunchedProgram(ncm::ProgramId program_id) {
         bool has_launched = false;
-        R_ASSERT(HasLaunchedProgram(&has_launched, program_id));
+        R_ABORT_UNLESS(HasLaunchedProgram(&has_launched, program_id));
         return has_launched;
     }
 

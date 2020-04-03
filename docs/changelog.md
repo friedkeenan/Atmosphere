@@ -1,4 +1,86 @@
 # Changelog
+## 0.10.5
++ Changes were made to the way fs.mitm builds images when providing a layeredfs romfs.
+  + Building romfs metadata previously had a memory cost of about ~4-5x the file table size.
+  + This caused games that have particularly enormous file metadata tables (> 4 MB) to exhaust fs.mitm's 16 MB memory pool.
+  + The code that creates romfs images was thus changed to be significantly more memory efficient, again.
+  + Memory requirements have been lowered from ~4x file table size to ~2x file table size + 0.5 MB.
+  + There is a slight speed penalty to this, but testing on Football Manager 2020 only took an extra ~1.5 seconds for the game to boot with many modded files.
+    + This shouldn't be noticeable thanks to the async changes made in 0.10.2.
+  + If you encounter a game that exhausts ams.mitm's memory (crashing it) when loading layeredfs mods, please contact SciresM.
+    + Romfs building can be made even more memory efficient, but unless games show up with even more absurdly huge file tables it seems not worth the speed trade-off.
++ A bug was fixed that caused Atmosphere's fatal error context to not dump TLS for certain processes.
++ General system stability improvements to enhance the user's experience.
+## 0.10.4
++ With major thanks to @Adubbz for his work, the NCM system module has now been re-implemented.
+  + This was a major stepping stone towards the goal of having implementations everything in the Switch's package1/package2 firmware.
+  + This also lays the groundwork for libstratosphere providing bindings for changing the installed version of the Switch's OS.
+  + **Please Note**: The NCM implementation will initially be opt-in.
+    + The Atmosphere team is confident in our NCM implementation (and we have tested it on every firmware version).
+    + That said, this is our first system module that manages NAND savegames -- and caution is a habit.
+    + We do not anticipate any issues that didn't come up in testing, so this is just our being particularly careful.
+    + Users interested in opting in to using our implementation should set `stratosphere!ncm_enabled = 1` in BCT.ini.
+      + In the unlikely event that any issues are encountered, please report them to @SciresM.
+    + The NCM implementation will stop being opt-in in a future update, after thorough testing has been done in practice.
++ A bug was fixed in emummc that caused Nintendo path to be corrupted on 1.0.0.
+  + This manifested as the emummc folder being created inside the virtual NAND instead of the SD card.
+  + It's unlikely there are any negative consequences to this in practice.
+    + If you want to be truly sure, you can re-clone sysmmc before updating a 1.0.0 emummc to latest firmware.
++ Stratosphere system modules now use new Nintendo-style FS bindings instead of stdio.
+  + This saves a modest amount of memory due to leaner code, and greatly increases the accuracy of several components.
+  + These bindings will make it easier for other system modules using libstratosphere to interact with the filesystem.
+  + This also lays the groundwork for changes necessary to support per-emummc Atmosphere folders in a future update.
++ Atmosphere's fatal error context now dumps 0x100 of TLS.
+  + This will make it much easier to fix bugs when an error report is dumped for whatever caused the crash.
++ General system stability improvements to enhance the user's experience.
+## 0.10.3
++ Support was added for 9.2.0.
++ Support was added for redirecting manual html content for games.
+  + This works like normal layeredfs, replacing content placed in `/atmosphere/contents/<program id>/manual_html/`.
+  + This allows for game mods/translations to provide custom manual content, if they so choose.
++ A number of improvements were made to Atmosphere's memory usage, including:
+  + `fatal` now uses STB instead of freetype for rendering.
+    + This saves around 1 MB of memory, and makes our fatal substantially leaner than Nintendo's.
+  + `sm` no longer wastes 2 MiB unnecessarily.
++ fusee/sept's sdmmc access now better matches official behavior.
+  + This improves compatibility with some SD cards.
++ `ro` has been updated to reflect changes made in 9.1.0.
++ The temporary auto-migration added in 0.10.0 has been removed, since the transitionary period is well over.
++ General system stability improvements to enhance the user's experience.
+## 0.10.2
++ hbl configuration was made more flexible.
+  + Up to eight specific program ids can now be specified to have their own override keys.
+  + This allows designating both the album applet and a specific game as hbl by default as desired.
+  + Configuration targeting a specific program is now mutually exclusive with override-any-app for that program.
+    + This fixes unintuitive behavior when override key differed for an application specific program.
++ Loader's external content fileystem support was fixed (thanks @misson20000!).
++ KernelLdr was reimplemented.
+  + This is the first step towards developing mesosphere, Atmosphere's planned reimplementation of the Switch's Kernel.
+  + The typical user won't notice anything different, as there are no extensions, but a lot of groundwork was laid for future development.
++ Improvements were made to the way Atmosphere's buildsystem detects source code files.
+  + This significantly reduces compilation time (saving >30 seconds) on the machine that builds official releases.
++ Certain device code was cleaned up and made more correct in fusee/sept/exosphere (thanks @hexkyz!).
++ A number of changes were made to the way fs.mitm builds images when providing a layeredfs romfs.
+  + Some games (Resident Evil 6, Football Manager 2020 Touch, possibly others) have enormous numbers of files.
+  + Attempting to create a layeredfs mod for these games actually caused fs.mitm to run out of memory, causing a fatal error.
+  + The code that creates these images was changed to be significantly more memory efficient.
+  + However, these changes also cause a significant slowdown in the romfs building code (~2-5x).
+  + This introduced a noticeable stutter when launching a game, because the UI thread would block on the romfs creation.
+  + To solve this, fs.mitm now lazily initializes the image in a background thread.
+  + This fixes stutter issues, however some games may be slightly slower (~1-2s in the worst cases) to transition from the "loading" GIF to gameplay now.
+    + Please note: the slowdown is not noticeable in the common case where games don't have tons of files (typical is ~0.1-0.2 seconds).
+    + Once the image has been built, there is no further speed penalty at runtime -- only when the game is launched.
++ A number of other bugs were fixed, including:
+  + Several minor logic inversions that could have caused fatal errors when modding games.
+  + Atmosphere's new-ipc code did not handle "automatic" recvlist buffers correctly, so some non-libnx homebrew could crash.
+  + fs.mitm now correctly mitms sdb, which makes redirection of certain system data archives work again.
+    + In 0.10.0/0.10.1, changing the system font/language did not work correctly due to this.
+  +  A bug was fixed in process cleanup that caused the system to hang on < 5.0.0.
++ The temporary hid-mitm added in Atmosphere 0.9.0 was disabled by default.
+  + Please ensure your homebrew is updated.
+  + For now, users may re-enable this mitm by use of a custom setting (`atmosphere!enable_deprecated_hid_mitm`) to ease the transition process some.
+  + Please note: support for this setting may be removed to save memory in a future atmosphere release.
++ General system stability improvements to enhance the user's experience.
 ## 0.10.1
 + A bug was fixed that caused memory reallocation to the system pool to work improperly on firmware 5.0.0 and above.
   + Atmosphere was always trying to deallocate memory away from the applet pool and towards the system pool.

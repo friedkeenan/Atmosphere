@@ -84,23 +84,23 @@ ifneq ($(BUILD),$(notdir $(CURDIR)))
 export OUTPUT	:=	$(CURDIR)/$(TARGET)
 export TOPDIR	:=	$(CURDIR)
 
-export KIPDIRS	:= $(AMS)/stratosphere/loader $(AMS)/stratosphere/pm $(AMS)/stratosphere/sm $(AMS)/stratosphere/boot $(AMS)/stratosphere/spl $(AMS)/stratosphere/ams_mitm
+export KIPDIRS	:= $(AMS)/stratosphere/loader $(AMS)/stratosphere/ncm $(AMS)/stratosphere/pm $(AMS)/stratosphere/sm $(AMS)/stratosphere/boot $(AMS)/stratosphere/spl $(AMS)/stratosphere/ams_mitm
 export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 			$(foreach dir,$(DATA),$(CURDIR)/$(dir)) \
 			$(AMS)/exosphere $(AMS)/exosphere/lp0fw $(AMS)/exosphere/rebootstub \
 			$(AMS)/thermosphere $(AMS)/fusee/fusee-primary $(AMS)/sept/sept-primary \
-			$(AMS)/sept/sept-secondary $(AMS)/emummc $(KIPDIRS)
+			$(AMS)/sept/sept-secondary $(AMS)/emummc $(AMS)/mesosphere/kernel_ldr $(KIPDIRS)
 
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
 CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
-KIPFILES 	:=	loader.kip pm.kip sm.kip ams_mitm.kip spl.kip boot.kip
+KIPFILES 	:=	loader.kip ncm.kip pm.kip sm.kip ams_mitm.kip spl.kip boot.kip
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*))) fusee-primary.bin \
 				exosphere.bin lp0fw.bin rebootstub.bin thermosphere.bin splash_screen.bmp \
 				sept-primary.bin sept-secondary_00.enc sept-secondary_01.enc emummc.kip \
-				$(KIPFILES)
+				sept-secondary_dev_00.enc sept-secondary_dev_01.enc kernel_ldr.bin $(KIPFILES)
 
 #---------------------------------------------------------------------------------
 # use CXX for linking C++ projects, CC for standard C
@@ -151,11 +151,14 @@ check_thermosphere:
 check_stratosphere: check_libraries
 	@$(MAKE) -C $(AMS)/stratosphere all
 
+check_mesosphere: check_libraries
+	@$(MAKE) -C $(AMS)/mesosphere all
+
 check_libraries:
 	@$(MAKE) -C $(AMS)/libraries all
 
 
-$(BUILD): check_fusee_primary check_exosphere check_sept check_emummc check_thermosphere check_libraries check_stratosphere
+$(BUILD): check_fusee_primary check_exosphere check_sept check_emummc check_thermosphere check_libraries check_stratosphere check_mesosphere
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
@@ -166,6 +169,7 @@ clean:
 	@$(MAKE) -C $(AMS)/exosphere clean
 	@$(MAKE) -C $(AMS)/thermosphere clean
 	@$(MAKE) -C $(AMS)/libraries clean
+	@$(MAKE) -C $(AMS)/mesosphere clean
 	@$(MAKE) -C $(AMS)/stratosphere clean
 	@$(MAKE) -C $(AMS)/sept clean
 	@$(MAKE) -C $(AMS)/emummc clean
@@ -214,6 +218,16 @@ sept_secondary_00.enc.o	sept_secondary_00.h:	sept-secondary_00.enc
 	@$(_bin2o)
 
 sept_secondary_01.enc.o	sept_secondary_01_enc.h:	sept-secondary_01.enc
+#---------------------------------------------------------------------------------
+	@echo $(notdir $<)
+	@$(_bin2o)
+
+sept_secondary_dev_00.enc.o	sept_secondary_dev_00_enc.h:	sept-secondary_dev_00.enc
+#---------------------------------------------------------------------------------
+	@echo $(notdir $<)
+	@$(_bin2o)
+
+sept_secondary_dev_01.enc.o	sept_secondary_dev_01_enc.h:	sept-secondary_dev_01.enc
 #---------------------------------------------------------------------------------
 	@echo $(notdir $<)
 	@$(_bin2o)

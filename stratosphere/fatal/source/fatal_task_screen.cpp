@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -182,7 +182,7 @@ namespace ams::fatal::srv {
 
             /* Prepare screen for drawing. */
             sm::DoWithSession([&]() {
-                R_ASSERT(PrepareScreenForDrawing());
+                R_ABORT_UNLESS(PrepareScreenForDrawing());
             });
 
             /* Dequeue a buffer. */
@@ -198,15 +198,16 @@ namespace ams::fatal::srv {
                 tiled_buf[i] = AtmosphereLogoData[0];
             }
 
-            /* Draw the atmosphere logo in the bottom right corner. */
+            /* Draw the atmosphere logo in the upper right corner. */
+            const u32 start_x = 32, start_y = 64;
             for (size_t y = 0; y < AtmosphereLogoHeight; y++) {
                 for (size_t x = 0; x < AtmosphereLogoWidth; x++) {
-                    tiled_buf[GetPixelOffset(FatalScreenWidth - AtmosphereLogoWidth - 32 + x, 32 + y)] = AtmosphereLogoData[y * AtmosphereLogoWidth + x];
+                    tiled_buf[GetPixelOffset(FatalScreenWidth - AtmosphereLogoWidth - start_x + x, start_x + y)] = AtmosphereLogoData[y * AtmosphereLogoWidth + x];
                 }
             }
 
-            /* TODO: Actually draw meaningful shit here. */
-            font::SetPosition(32, 64);
+            /* Draw error message and firmware. */
+            font::SetPosition(start_x, start_y);
             font::SetFontSize(16.0f);
             font::PrintFormat(config.GetErrorMessage(), this->context->result.GetModule(), this->context->result.GetDescription(), this->context->result.GetValue());
             font::AddSpacingLines(0.5f);
@@ -227,7 +228,7 @@ namespace ams::fatal::srv {
             }
 
             /* Add a line. */
-            for (size_t x = 32; x < FatalScreenWidth - 32; x++) {
+            for (size_t x = start_x; x < FatalScreenWidth - start_x; x++) {
                 tiled_buf[GetPixelOffset(x, font::GetY())] = 0xF81F;
             }
 
@@ -235,6 +236,7 @@ namespace ams::fatal::srv {
 
             u32 backtrace_y = font::GetY();
             u32 backtrace_x = 0;
+            u32 pc_x = 0;
 
             /* Note architecutre. */
             const bool is_aarch32 = this->context->cpu_ctx.architecture == CpuContext::Architecture_Aarch32;
@@ -242,19 +244,8 @@ namespace ams::fatal::srv {
             /* Print GPRs. */
             font::SetFontSize(14.0f);
             font::Print("General Purpose Registers      ");
-            {
-                font::SetPosition(font::GetX() + 2, font::GetY());
-                u32 x = font::GetX();
-                font::Print("PC: ");
-                font::SetPosition(x + 47, font::GetY());
-            }
-            if (is_aarch32) {
-                font::PrintMonospaceU32(this->context->cpu_ctx.aarch32_ctx.pc);
-            } else {
-                font::PrintMonospaceU64(this->context->cpu_ctx.aarch64_ctx.pc);
-            }
             font::PrintLine("");
-            font::SetPosition(32, font::GetY());
+            font::SetPosition(start_x, font::GetY());
             font::AddSpacingLines(0.5f);
             if (is_aarch32) {
                 for (size_t i = 0; i < (aarch32::RegisterName_GeneralPurposeCount / 2); i++) {
@@ -263,17 +254,19 @@ namespace ams::fatal::srv {
                     font::SetPosition(x + 47, font::GetY());
                     if (this->context->cpu_ctx.aarch32_ctx.HasRegisterValue(static_cast<aarch32::RegisterName>(i))) {
                         font::PrintMonospaceU32(this->context->cpu_ctx.aarch32_ctx.r[i]);
-                    } else {
                         font::PrintMonospaceBlank(8);
+                    } else {
+                        font::PrintMonospaceBlank(16);
                     }
                     font::Print("  ");
-                    x = font::GetX();
+                    pc_x = font::GetX();
                     font::PrintFormat("%s:", aarch32::CpuContext::RegisterNameStrings[i + (aarch32::RegisterName_GeneralPurposeCount / 2)]);
-                    font::SetPosition(x + 47, font::GetY());
+                    font::SetPosition(pc_x + 47, font::GetY());
                     if (this->context->cpu_ctx.aarch32_ctx.HasRegisterValue(static_cast<aarch32::RegisterName>(i + (aarch32::RegisterName_GeneralPurposeCount / 2)))) {
                         font::PrintMonospaceU32(this->context->cpu_ctx.aarch32_ctx.r[i + (aarch32::RegisterName_GeneralPurposeCount / 2)]);
-                    } else {
                         font::PrintMonospaceBlank(8);
+                    } else {
+                        font::PrintMonospaceBlank(16);
                     }
 
                     if (i == (aarch32::RegisterName_GeneralPurposeCount / 2) - 1) {
@@ -282,7 +275,7 @@ namespace ams::fatal::srv {
                     }
 
                     font::PrintLine("");
-                    font::SetPosition(32, font::GetY());
+                    font::SetPosition(start_x, font::GetY());
                 }
             } else {
                 for (size_t i = 0; i < aarch64::RegisterName_GeneralPurposeCount / 2; i++) {
@@ -295,9 +288,9 @@ namespace ams::fatal::srv {
                         font::PrintMonospaceBlank(16);
                     }
                     font::Print("  ");
-                    x = font::GetX();
+                    pc_x = font::GetX();
                     font::PrintFormat("%s:", aarch64::CpuContext::RegisterNameStrings[i + (aarch64::RegisterName_GeneralPurposeCount / 2)]);
-                    font::SetPosition(x + 47, font::GetY());
+                    font::SetPosition(pc_x + 47, font::GetY());
                     if (this->context->cpu_ctx.aarch64_ctx.HasRegisterValue(static_cast<aarch64::RegisterName>(i + (aarch64::RegisterName_GeneralPurposeCount / 2)))) {
                         font::PrintMonospaceU64(this->context->cpu_ctx.aarch64_ctx.x[i + (aarch64::RegisterName_GeneralPurposeCount / 2)]);
                     } else {
@@ -310,8 +303,21 @@ namespace ams::fatal::srv {
                     }
 
                     font::PrintLine("");
-                    font::SetPosition(32, font::GetY());
+                    font::SetPosition(start_x, font::GetY());
                 }
+            }
+
+            /* Print PC. */
+            {
+                font::SetPosition(pc_x, backtrace_y);
+                const u32 x = font::GetX();
+                font::Print("PC: ");
+                font::SetPosition(x + 47, font::GetY());
+            }
+            if (is_aarch32) {
+                font::PrintMonospaceU32(this->context->cpu_ctx.aarch32_ctx.pc);
+            } else {
+                font::PrintMonospaceU64(this->context->cpu_ctx.aarch64_ctx.pc);
             }
 
             /* Print Backtrace. */
@@ -354,6 +360,7 @@ namespace ams::fatal::srv {
                             font::PrintFormat("BT[%02d]: ", i);
                             font::SetPosition(x + 72, font::GetY());
                             font::PrintMonospaceU32(bt_cur);
+                            font::PrintMonospaceBlank(8);
                             font::Print("  ");
                         }
 
@@ -362,6 +369,7 @@ namespace ams::fatal::srv {
                             font::PrintFormat("BT[%02d]: ", i + aarch32::CpuContext::MaxStackTraceDepth / 2);
                             font::SetPosition(x + 72, font::GetY());
                             font::PrintMonospaceU32(bt_next);
+                            font::PrintMonospaceBlank(8);
                         }
 
                         font::PrintLine("");
@@ -410,7 +418,7 @@ namespace ams::fatal::srv {
 
         Result ShowFatalTask::Run() {
             /* Don't show the fatal error screen until we've verified the battery is okay. */
-            eventWait(const_cast<Event *>(&this->context->battery_event), U64_MAX);
+            eventWait(const_cast<Event *>(&this->context->battery_event), std::numeric_limits<u64>::max());
 
             return ShowFatal();
         }

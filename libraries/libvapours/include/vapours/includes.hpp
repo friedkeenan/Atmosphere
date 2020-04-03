@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -26,42 +26,38 @@
 #include <climits>
 #include <cctype>
 
-
+/* C++ headers. */
 #include <type_traits>
 #include <algorithm>
 #include <iterator>
 #include <limits>
 #include <random>
-
-/* Stratosphere wants stdlib headers, others do not.. */
-#ifdef ATMOSPHERE_IS_STRATOSPHERE
-
-/* C++ headers. */
 #include <atomic>
 #include <utility>
 #include <optional>
-#include <memory>
-#include <mutex>
-#include <shared_mutex>
 #include <functional>
 #include <tuple>
 #include <array>
+
+/* Stratosphere wants additional libstdc++ headers, others do not. */
+#ifdef ATMOSPHERE_IS_STRATOSPHERE
+
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <map>
 #include <unordered_map>
 #include <set>
-
-#endif /* ATMOSPHERE_IS_STRATOSPHERE */
-
-#ifdef ATMOSPHERE_BOARD_NINTENDO_SWITCH
 
 /* Libnx. */
 #include <switch.h>
 
 #else
 
-#error "Unsupported board"
+/* Non-EL0 code can't include libnx. */
+#include "types.hpp"
 
-#endif /* ATMOSPHERE_BOARD_NINTENDO_SWITCH */
+#endif /* ATMOSPHERE_IS_STRATOSPHERE */
 
 /* Atmosphere meta. */
-#include "ams_version.h"
+#include <vapours/ams_version.h>

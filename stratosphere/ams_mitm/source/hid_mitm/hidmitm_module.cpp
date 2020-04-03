@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include "../amsmitm_initialization.hpp"
 #include "hidmitm_module.hpp"
 #include "hid_mitm_service.hpp"
 
@@ -31,6 +32,14 @@ namespace ams::mitm::hid {
         constexpr size_t MaxServers = 1;
         sf::hipc::ServerManager<MaxServers, ServerOptions> g_server_manager;
 
+        bool ShouldMitmHidForCompability() {
+            u8 en = 0;
+            if (settings::fwdbg::GetSettingsItemValue(&en, sizeof(en), "atmosphere", "enable_deprecated_hid_mitm") == sizeof(en)) {
+                return (en != 0);
+            }
+            return false;
+        }
+
     }
 
     void MitmModule::ThreadFunction(void *arg) {
@@ -39,8 +48,17 @@ namespace ams::mitm::hid {
             return;
         }
 
+        /* Wait until initialization is complete. */
+        mitm::WaitInitialized();
+
+        /* hid mitm was a temporary solution for compatibility. */
+        /* Unless we are configured to continue doing so, don't instantiate the mitm. */
+        if (!ShouldMitmHidForCompability()) {
+            return;
+        }
+
         /* Create hid mitm. */
-        R_ASSERT(g_server_manager.RegisterMitmServer<HidMitmService>(MitmServiceName));
+        R_ABORT_UNLESS(g_server_manager.RegisterMitmServer<HidMitmService>(MitmServiceName));
 
         /* Loop forever, servicing our services. */
         g_server_manager.LoopProcess();

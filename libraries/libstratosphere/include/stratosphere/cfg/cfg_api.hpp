@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -42,7 +42,6 @@ namespace ams::cfg {
     bool HasGlobalFlag(const char *flag);
 
     /* HBL Configuration utilities. */
-    bool IsHblProgramId(ncm::ProgramId program_id);
     bool HasHblFlag(const char *flag);
     const char *GetHblPath();
 

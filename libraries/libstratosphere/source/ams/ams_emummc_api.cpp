@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -21,7 +21,7 @@ namespace ams::emummc {
     namespace {
 
         /* Convenience Definitions. */
-        constexpr u32 StorageMagic = 0x30534645; /* EFS0 */
+        constexpr u32 StorageMagic = util::FourCC<'E','F','S','0'>::Code;
         constexpr size_t MaxDirLen = 0x7F;
 
         /* Types. */
@@ -82,7 +82,7 @@ namespace ams::emummc {
                 } *paths = reinterpret_cast<decltype(paths)>(&path_storage);
 
                 /* Retrieve paths from secure monitor. */
-                AMS_ASSERT(spl::smc::AtmosphereGetEmummcConfig(&g_exo_config, paths, 0) == spl::smc::Result::Success);
+                AMS_ABORT_UNLESS(spl::smc::AtmosphereGetEmummcConfig(&g_exo_config, paths, 0) == spl::smc::Result::Success);
 
                 const Storage storage = static_cast<Storage>(g_exo_config.base_cfg.type);
                 g_is_emummc = g_exo_config.base_cfg.magic == StorageMagic && storage != Storage_Emmc;

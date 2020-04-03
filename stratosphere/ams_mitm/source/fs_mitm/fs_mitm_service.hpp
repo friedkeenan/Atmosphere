@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -43,6 +43,25 @@ namespace ams::mitm::fs {
                 OpenDataStorageByDataId         = 202,
             };
         public:
+            NX_CONSTEXPR bool ShouldMitmProgramId(const ncm::ProgramId program_id) {
+                /* We want to mitm everything that isn't a system-module. */
+                if (!ncm::IsSystemProgramId(program_id)) {
+                    return true;
+                }
+
+                /* We want to mitm ns, to intercept SD card requests. */
+                if (program_id == ncm::SystemProgramId::Ns) {
+                    return true;
+                }
+
+                /* We want to mitm sdb, to support sd-romfs redirection of common system archives (like system font, etc). */
+                if (program_id == ncm::SystemProgramId::Sdb) {
+                    return true;
+                }
+
+                return false;
+            }
+
             static bool ShouldMitm(const sm::MitmProcessInfo &client_info) {
                 static std::atomic_bool has_launched_qlaunch = false;
 
@@ -50,11 +69,11 @@ namespace ams::mitm::fs {
                 /* Figure out why, and address it. */
                 /* TODO: This may be because pre-rewrite code really mismanaged domain objects in a way that would cause bad things. */
                 /* Need to verify if this is fixed now. */
-                if (client_info.program_id == ncm::ProgramId::AppletQlaunch || client_info.program_id == ncm::ProgramId::AppletMaintenanceMenu) {
+                if (client_info.program_id == ncm::SystemAppletId::Qlaunch || client_info.program_id == ncm::SystemAppletId::MaintenanceMenu) {
                     has_launched_qlaunch = true;
                 }
 
-                return has_launched_qlaunch || client_info.program_id == ncm::ProgramId::Ns || !ncm::IsSystemProgramId(client_info.program_id);
+                return has_launched_qlaunch || ShouldMitmProgramId(client_info.program_id);
             }
         public:
             SF_MITM_SERVICE_OBJECT_CTOR(FsMitmService) { /* ... */ }
@@ -63,10 +82,10 @@ namespace ams::mitm::fs {
             Result OpenFileSystemWithPatch(sf::Out<std::shared_ptr<IFileSystemInterface>> out, ncm::ProgramId program_id, u32 _filesystem_type);
             Result OpenFileSystemWithId(sf::Out<std::shared_ptr<IFileSystemInterface>> out, const fssrv::sf::Path &path, ncm::ProgramId program_id, u32 _filesystem_type);
             Result OpenSdCardFileSystem(sf::Out<std::shared_ptr<IFileSystemInterface>> out);
-            Result OpenSaveDataFileSystem(sf::Out<std::shared_ptr<IFileSystemInterface>> out, u8 space_id, const FsSaveDataAttribute &attribute);
+            Result OpenSaveDataFileSystem(sf::Out<std::shared_ptr<IFileSystemInterface>> out, u8 space_id, const ams::fs::SaveDataAttribute &attribute);
             Result OpenBisStorage(sf::Out<std::shared_ptr<IStorageInterface>> out, u32 bis_partition_id);
             Result OpenDataStorageByCurrentProcess(sf::Out<std::shared_ptr<IStorageInterface>> out);
-            Result OpenDataStorageByDataId(sf::Out<std::shared_ptr<IStorageInterface>> out, ncm::ProgramId /* TODO: ncm::DataId */ data_id, u8 storage_id);
+            Result OpenDataStorageByDataId(sf::Out<std::shared_ptr<IStorageInterface>> out, ncm::DataId data_id, u8 storage_id);
         public:
             DEFINE_SERVICE_DISPATCH_TABLE {
                 MAKE_SERVICE_COMMAND_META(OpenFileSystemWithPatch, hos::Version_200),

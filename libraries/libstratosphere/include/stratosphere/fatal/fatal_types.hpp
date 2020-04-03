@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -16,8 +16,8 @@
 
 #pragma once
 #include <vapours.hpp>
-#include "../ncm/ncm_types.hpp"
-#include "../sf/sf_buffer_tags.hpp"
+#include <stratosphere/ncm/ncm_ids.hpp>
+#include <stratosphere/sf/sf_buffer_tags.hpp>
 
 namespace ams::fatal {
 
@@ -327,7 +327,10 @@ namespace ams::fatal {
             Event erpt_event;
             Event battery_event;
             size_t stack_dump_size;
+            u64 stack_dump_base;
             u8 stack_dump[0x100];
+            u64 tls_address;
+            u8 tls_dump[0x100];
 
             void ClearState() {
                 this->result = ResultSuccess();
@@ -339,7 +342,10 @@ namespace ams::fatal {
                 std::memset(&this->erpt_event, 0, sizeof(this->erpt_event));
                 std::memset(&this->battery_event, 0, sizeof(this->battery_event));
                 this->stack_dump_size = 0;
+                this->stack_dump_base = 0;
                 std::memset(this->stack_dump, 0, sizeof(this->stack_dump));
+                this->tls_address = 0;
+                std::memset(this->tls_dump, 0, sizeof(this->tls_dump));
             }
         };
 

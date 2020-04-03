@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Atmosphère-NX
+ * Copyright (c) 2018-2020 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -37,7 +37,7 @@ namespace ams::fatal::srv {
                 }
 
                 const svc::ThreadState thread_state = static_cast<svc::ThreadState>(_thread_state);
-                if (thread_state != svc::ThreadState::Waiting && thread_state != svc::ThreadState::Running) {
+                if (thread_state != svc::ThreadState_Waiting && thread_state != svc::ThreadState_Running) {
                     return false;
                 }
             }
@@ -181,17 +181,17 @@ namespace ams::fatal::srv {
             svc::DebugEventInfo d;
             while (R_SUCCEEDED(svcGetDebugEvent(reinterpret_cast<u8 *>(&d), debug_handle.Get()))) {
                 switch (d.type) {
-                    case svc::DebugEventType::AttachProcess:
+                    case svc::DebugEvent_AttachProcess:
                         ctx->cpu_ctx.architecture = (d.info.attach_process.flags & 1) ? CpuContext::Architecture_Aarch64 : CpuContext::Architecture_Aarch32;
                         std::memcpy(ctx->proc_name, d.info.attach_process.name, sizeof(d.info.attach_process.name));
                         got_attach_process = true;
                         break;
-                    case svc::DebugEventType::AttachThread:
+                    case svc::DebugEvent_AttachThread:
                         thread_id_to_tls[d.info.attach_thread.thread_id] = d.info.attach_thread.tls_address;
                         break;
-                    case svc::DebugEventType::Exception:
-                    case svc::DebugEventType::ExitProcess:
-                    case svc::DebugEventType::ExitThread:
+                    case svc::DebugEvent_Exception:
+                    case svc::DebugEvent_ExitProcess:
+                    case svc::DebugEvent_ExitThread:
                         break;
                 }
             }
@@ -209,6 +209,7 @@ namespace ams::fatal::srv {
         /* Welcome to hell. Here, we try to identify which thread called into fatal. */
         bool found_fatal_caller = false;
         u64 thread_id = 0;
+        u64 thread_tls = 0;
         ThreadContext thread_ctx;
         {
             /* We start by trying to get a list of threads. */
@@ -227,6 +228,7 @@ namespace ams::fatal::srv {
 
                 if (IsThreadFatalCaller(ctx->result, debug_handle.Get(), cur_thread_id, thread_id_to_tls[cur_thread_id], &thread_ctx)) {
                     thread_id = cur_thread_id;
+                    thread_tls = thread_id_to_tls[thread_id];
                     found_fatal_caller = true;
                     break;
                 }
@@ -266,11 +268,21 @@ namespace ams::fatal::srv {
         }
 
         /* Try to read up to 0x100 of stack. */
+        ctx->stack_dump_base = 0;
         for (size_t sz = 0x100; sz > 0; sz -= 0x10) {
             if (R_SUCCEEDED(svcReadDebugProcessMemory(ctx->stack_dump, debug_handle.Get(), thread_ctx.sp, sz))) {
+                ctx->stack_dump_base = thread_ctx.sp;
                 ctx->stack_dump_size = sz;
                 break;
             }
+        }
+
+        /* Try to read the first 0x100 of TLS. */
+        if (R_SUCCEEDED(svcReadDebugProcessMemory(ctx->tls_dump, debug_handle.Get(), thread_tls, sizeof(ctx->tls_dump)))) {
+            ctx->tls_address = thread_tls;
+        } else {
+            ctx->tls_address = 0;
+            std::memset(ctx->tls_dump, 0xCC, sizeof(ctx->tls_dump));
         }
 
         /* Parse the base address. */
