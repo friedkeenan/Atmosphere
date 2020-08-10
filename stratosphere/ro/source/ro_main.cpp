@@ -13,8 +13,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include "ro_debug_monitor.hpp"
-#include "ro_service.hpp"
+#include <stratosphere.hpp>
+#include "ro_debug_monitor_service.hpp"
+#include "ro_ro_service.hpp"
 
 extern "C" {
     extern u32 __start__;
@@ -58,13 +59,13 @@ void __libnx_initheap(void) {
 }
 
 void __appInit(void) {
-    hos::SetVersionForLibnx();
+    hos::InitializeForStratosphere();
 
     sm::DoWithSession([&]() {
         R_ABORT_UNLESS(setsysInitialize());
         R_ABORT_UNLESS(fsInitialize());
-        R_ABORT_UNLESS(splInitialize());
-        if (hos::GetVersion() < hos::Version_300) {
+        spl::Initialize();
+        if (hos::GetVersion() < hos::Version_3_0_0) {
             R_ABORT_UNLESS(pminfoInitialize());
         }
     });
@@ -76,15 +77,12 @@ void __appInit(void) {
 
 void __appExit(void) {
     fsExit();
-    if (hos::GetVersion() < hos::Version_300) {
+    if (hos::GetVersion() < hos::Version_3_0_0) {
         pminfoExit();
     }
+
     setsysExit();
 }
-
-/* Helpers to create RO objects. */
-static constexpr auto MakeRoServiceForSelf = []() { return std::make_shared<ro::Service>(ro::ModuleType::ForSelf); };
-static constexpr auto MakeRoServiceForOthers = []() { return std::make_shared<ro::Service>(ro::ModuleType::ForOthers); };
 
 namespace {
 
@@ -107,20 +105,24 @@ namespace {
 
 int main(int argc, char **argv)
 {
+    /* Set thread name. */
+    os::SetThreadNamePointer(os::GetCurrentThread(), AMS_GET_SYSTEM_THREAD_NAME(ro, Main));
+    AMS_ASSERT(os::GetThreadPriority(os::GetCurrentThread()) == AMS_GET_SYSTEM_THREAD_PRIORITY(ro, Main));
+
     /* Initialize Debug config. */
     {
-        ON_SCOPE_EXIT { splExit(); };
+        ON_SCOPE_EXIT { spl::Finalize(); };
 
-        ro::SetDevelopmentHardware(spl::IsDevelopmentHardware());
+        ro::SetDevelopmentHardware(spl::IsDevelopment());
         ro::SetDevelopmentFunctionEnabled(spl::IsDevelopmentFunctionEnabled());
     }
 
     /* Create services. */
-    R_ABORT_UNLESS((g_server_manager.RegisterServer<ro::DebugMonitorService>(DebugMonitorServiceName, DebugMonitorMaxSessions)));
+    R_ABORT_UNLESS((g_server_manager.RegisterServer<ro::impl::IDebugMonitorInterface, ro::DebugMonitorService>(DebugMonitorServiceName, DebugMonitorMaxSessions)));
 
-    R_ABORT_UNLESS((g_server_manager.RegisterServer<ro::Service, +MakeRoServiceForSelf>(ForSelfServiceName, ForSelfMaxSessions)));
-    if (hos::GetVersion() >= hos::Version_700) {
-        R_ABORT_UNLESS((g_server_manager.RegisterServer<ro::Service, +MakeRoServiceForOthers>(ForOthersServiceName, ForOthersMaxSessions)));
+    R_ABORT_UNLESS((g_server_manager.RegisterServer<ro::impl::IRoInterface, ro::RoServiceForSelf>(ForSelfServiceName, ForSelfMaxSessions)));
+    if (hos::GetVersion() >= hos::Version_7_0_0) {
+        R_ABORT_UNLESS((g_server_manager.RegisterServer<ro::impl::IRoInterface, ro::RoServiceForOthers>(ForOthersServiceName, ForOthersMaxSessions)));
     }
 
     /* Loop forever, servicing our services. */

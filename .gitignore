@@ -31,11 +31,15 @@
 
 # Executables
 *.exe
+*.lz4
 *.out
 *.app
 *.i*86
 *.x86_64
 *.hex
+
+# Deko3d shaders
+*.dksh
 
 # Switch Executables
 *.nso

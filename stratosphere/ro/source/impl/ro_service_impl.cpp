@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "ro_nrr_utils.hpp"
 #include "ro_nro_utils.hpp"
 #include "ro_patcher.hpp"
@@ -88,7 +89,7 @@ namespace ams::ro::impl {
                 }
 
                 ncm::ProgramId program_id = ncm::InvalidProgramId;
-                if (hos::GetVersion() >= hos::Version_300) {
+                if (hos::GetVersion() >= hos::Version_3_0_0) {
                     /* 3.0.0+: Use svcGetInfo. */
                     R_ABORT_UNLESS(svcGetInfo(&program_id.value, InfoType_ProgramId, process_h, 0));
                 } else {
@@ -412,7 +413,7 @@ namespace ams::ro::impl {
     }
 
     /* Service implementations. */
-    Result LoadNrr(size_t context_id, Handle process_h, u64 nrr_address, u64 nrr_size, ModuleType expected_type, bool enforce_type) {
+    Result RegisterModuleInfo(size_t context_id, Handle process_h, u64 nrr_address, u64 nrr_size, ModuleType expected_type, bool enforce_type) {
         /* Get context. */
         ProcessContext *context = GetContextById(context_id);
         AMS_ABORT_UNLESS(context != nullptr);
@@ -453,7 +454,7 @@ namespace ams::ro::impl {
         return ResultSuccess();
     }
 
-    Result UnloadNrr(size_t context_id, u64 nrr_address) {
+    Result UnregisterModuleInfo(size_t context_id, u64 nrr_address) {
         /* Get context. */
         ProcessContext *context = GetContextById(context_id);
         AMS_ABORT_UNLESS(context != nullptr);
@@ -475,7 +476,7 @@ namespace ams::ro::impl {
         return UnmapNrr(context->process_handle, nrr_backup.mapped_header, nrr_backup.nrr_heap_address, nrr_backup.nrr_heap_size, nrr_backup.mapped_code_address);
     }
 
-    Result LoadNro(u64 *out_address, size_t context_id, u64 nro_address, u64 nro_size, u64 bss_address, u64 bss_size) {
+    Result MapManualLoadModuleMemory(u64 *out_address, size_t context_id, u64 nro_address, u64 nro_size, u64 bss_address, u64 bss_size) {
         /* Get context. */
         ProcessContext *context = GetContextById(context_id);
         AMS_ABORT_UNLESS(context != nullptr);
@@ -521,7 +522,7 @@ namespace ams::ro::impl {
         return ResultSuccess();
     }
 
-    Result UnloadNro(size_t context_id, u64 nro_address) {
+    Result UnmapManualLoadModuleMemory(size_t context_id, u64 nro_address) {
         /* Get context. */
         ProcessContext *context = GetContextById(context_id);
         AMS_ABORT_UNLESS(context != nullptr);

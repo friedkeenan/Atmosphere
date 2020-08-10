@@ -135,7 +135,7 @@ namespace ams::kern {
 
         namespace {
 
-            constexpr PageTableEntry KernelRwDataAttribute(PageTableEntry::Permission_KernelRW, PageTableEntry::PageAttribute_NormalMemory, PageTableEntry::Shareable_InnerShareable);
+            constexpr PageTableEntry KernelRwDataAttribute(PageTableEntry::Permission_KernelRW, PageTableEntry::PageAttribute_NormalMemory, PageTableEntry::Shareable_InnerShareable, PageTableEntry::MappingFlag_Mapped);
 
             constexpr size_t CarveoutAlignment             = 0x20000;
             constexpr size_t CarveoutSizeMax               = 512_MB - CarveoutAlignment;
@@ -144,7 +144,7 @@ namespace ams::kern {
             constexpr size_t CoreLocalRegionSize           = PageSize * (1 + cpu::NumCores);
             constexpr size_t CoreLocalRegionSizeWithGuards = CoreLocalRegionSize + 2 * PageSize;
             constexpr size_t CoreLocalRegionBoundsAlign    = 1_GB;
-            /* TODO: static_assert(CoreLocalRegionSize == sizeof(KCoreLocalRegion)); */
+            static_assert(CoreLocalRegionSize == sizeof(KCoreLocalRegion));
 
             KVirtualAddress GetCoreLocalRegionVirtualAddress() {
                 while (true) {

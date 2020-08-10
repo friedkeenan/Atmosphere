@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "spl_api_impl.hpp"
 
 #include "spl_random_service.hpp"
@@ -75,7 +76,7 @@ void __libnx_initheap(void) {
 }
 
 void __appInit(void) {
-    hos::SetVersionForLibnx();
+    hos::InitializeForStratosphere();
 
     /* SPL doesn't really access any services... */
 
@@ -98,13 +99,13 @@ namespace {
     constexpr size_t          RandomMaxSessions = 3;
 
     constexpr sm::ServiceName DeprecatedServiceName = sm::ServiceName::Encode("spl:");
-    constexpr size_t          DeprecatedMaxSessions = 12;
+    constexpr size_t          DeprecatedMaxSessions = 13;
 
     constexpr sm::ServiceName GeneralServiceName = sm::ServiceName::Encode("spl:");
-    constexpr size_t          GeneralMaxSessions = 6;
+    constexpr size_t          GeneralMaxSessions = 7;
 
     constexpr sm::ServiceName CryptoServiceName = sm::ServiceName::Encode("spl:mig");
-    constexpr size_t          CryptoMaxSessions = 6;
+    constexpr size_t          CryptoMaxSessions = 7;
 
     constexpr sm::ServiceName SslServiceName = sm::ServiceName::Encode("spl:ssl");
     constexpr size_t          SslMaxSessions = 2;
@@ -129,22 +130,26 @@ namespace {
 
 int main(int argc, char **argv)
 {
+    /* Set thread name. */
+    os::SetThreadNamePointer(os::GetCurrentThread(), AMS_GET_SYSTEM_THREAD_NAME(spl, Main));
+    AMS_ASSERT(os::GetThreadPriority(os::GetCurrentThread()) == AMS_GET_SYSTEM_THREAD_PRIORITY(spl, Main));
+
     /* Initialize global context. */
     spl::impl::Initialize();
 
     /* Create services. */
-    R_ABORT_UNLESS(g_server_manager.RegisterServer<spl::RandomService>(RandomServiceName, RandomMaxSessions));
-    if (hos::GetVersion() >= hos::Version_400) {
-        R_ABORT_UNLESS(g_server_manager.RegisterServer<spl::GeneralService>(GeneralServiceName, GeneralMaxSessions));
-        R_ABORT_UNLESS(g_server_manager.RegisterServer<spl::CryptoService>(CryptoServiceName, CryptoMaxSessions));
-        R_ABORT_UNLESS(g_server_manager.RegisterServer<spl::SslService>(SslServiceName, SslMaxSessions));
-        R_ABORT_UNLESS(g_server_manager.RegisterServer<spl::EsService>(EsServiceName, EsMaxSessions));
-        R_ABORT_UNLESS(g_server_manager.RegisterServer<spl::FsService>(FsServiceName, FsMaxSessions));
-        if (hos::GetVersion() >= hos::Version_500) {
-            R_ABORT_UNLESS(g_server_manager.RegisterServer<spl::ManuService>(ManuServiceName, ManuMaxSessions));
+    R_ABORT_UNLESS((g_server_manager.RegisterServer<spl::impl::IRandomInterface, spl::RandomService>(RandomServiceName, RandomMaxSessions)));
+    if (hos::GetVersion() >= hos::Version_4_0_0) {
+        R_ABORT_UNLESS((g_server_manager.RegisterServer<spl::impl::IGeneralInterface, spl::GeneralService>(GeneralServiceName, GeneralMaxSessions)));
+        R_ABORT_UNLESS((g_server_manager.RegisterServer<spl::impl::ICryptoInterface,  spl::CryptoService>(CryptoServiceName, CryptoMaxSessions)));
+        R_ABORT_UNLESS((g_server_manager.RegisterServer<spl::impl::ISslInterface,     spl::SslService>(SslServiceName, SslMaxSessions)));
+        R_ABORT_UNLESS((g_server_manager.RegisterServer<spl::impl::IEsInterface,      spl::EsService>(EsServiceName, EsMaxSessions)));
+        R_ABORT_UNLESS((g_server_manager.RegisterServer<spl::impl::IFsInterface,      spl::FsService>(FsServiceName, FsMaxSessions)));
+        if (hos::GetVersion() >= hos::Version_5_0_0) {
+            R_ABORT_UNLESS((g_server_manager.RegisterServer<spl::impl::IManuInterface, spl::ManuService>(ManuServiceName, ManuMaxSessions)));
         }
     } else {
-        R_ABORT_UNLESS(g_server_manager.RegisterServer<spl::DeprecatedService>(DeprecatedServiceName, DeprecatedMaxSessions));
+        R_ABORT_UNLESS((g_server_manager.RegisterServer<spl::impl::IDeprecatedGeneralInterface, spl::DeprecatedService>(DeprecatedServiceName, DeprecatedMaxSessions)));
     }
 
     /* Loop forever, servicing our services. */

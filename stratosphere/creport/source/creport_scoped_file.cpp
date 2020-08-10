@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "creport_scoped_file.hpp"
 
 namespace ams::creport {
@@ -22,7 +23,7 @@ namespace ams::creport {
         /* Convenience definitions. */
         constexpr size_t MaximumLineLength = 0x20;
 
-        os::Mutex g_format_lock;
+        os::Mutex g_format_lock(false);
         char g_format_buffer[2 * os::MemoryPageSize];
 
     }

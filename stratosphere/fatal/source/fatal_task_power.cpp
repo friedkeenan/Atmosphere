@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "fatal_config.hpp"
 #include "fatal_task_power.hpp"
 
@@ -50,6 +51,22 @@ namespace ams::fatal::srv {
                 }
         };
 
+        class RebootTimingObserver {
+            private:
+                os::Tick start_tick;
+                TimeSpan interval;
+                bool flag;
+            public:
+                RebootTimingObserver(bool flag, TimeSpan iv) : start_tick(os::GetSystemTick()), interval(iv), flag(flag)  {
+                    /* ... */
+                }
+
+                bool IsRebootTiming() const {
+                    auto current_tick = os::GetSystemTick();
+                    return this->flag && (current_tick - this->start_tick).ToTimeSpan() >= this->interval;
+                }
+        };
+
         /* Task globals. */
         PowerControlTask g_power_control_task;
         PowerButtonObserveTask g_power_button_observe_task;
@@ -58,13 +75,16 @@ namespace ams::fatal::srv {
         /* Task Implementations. */
         bool PowerControlTask::TryShutdown() {
             /* Set a timeout of 30 seconds. */
-            os::TimeoutHelper timeout_helper(30'000'000'000ul);
+            constexpr auto MaxShutdownWaitInterval = TimeSpan::FromSeconds(30);
+
+            auto start_tick = os::GetSystemTick();
 
             bool perform_shutdown = true;
             PsmBatteryVoltageState bv_state = PsmBatteryVoltageState_Normal;
 
             while (true) {
-                if (timeout_helper.TimedOut()) {
+                auto cur_tick = os::GetSystemTick();
+                if ((cur_tick - start_tick).ToTimeSpan() > MaxShutdownWaitInterval) {
                     break;
                 }
 
@@ -77,8 +97,8 @@ namespace ams::fatal::srv {
                     break;
                 }
 
-                /* Query voltage state every 5 seconds, for 30 seconds. */
-                svcSleepThread(5'000'000'000ul);
+                /* Query voltage state every 1 seconds, for 30 seconds. */
+                os::SleepThread(TimeSpan::FromSeconds(1));
             }
 
             if (perform_shutdown) {
@@ -94,13 +114,13 @@ namespace ams::fatal::srv {
             /* Check the battery state, and shutdown on low voltage. */
             if (R_FAILED(psmGetBatteryVoltageState(&bv_state)) || bv_state == PsmBatteryVoltageState_NeedsShutdown) {
                 /* Wait a second for the error report task to finish. */
-                eventWait(const_cast<Event *>(&this->context->erpt_event), os::TimeoutHelper::NsToTick(1'000'000'000ul));
+                this->context->erpt_event->TimedWait(TimeSpan::FromSeconds(1));
                 this->TryShutdown();
                 return;
             }
 
             /* Signal we've checked the battery at least once. */
-            eventFire(const_cast<Event *>(&this->context->battery_event));
+            this->context->battery_event->Signal();
 
             /* Loop querying voltage state every 5 seconds. */
             while (true) {
@@ -122,18 +142,18 @@ namespace ams::fatal::srv {
                         break;
                 }
 
-                svcSleepThread(5'000'000'000ul);
+                os::SleepThread(TimeSpan::FromSeconds(5));
             }
         }
 
         void PowerButtonObserveTask::WaitForPowerButton() {
             /* Wait up to a second for error report generation to finish. */
-            eventWait(const_cast<Event *>(&this->context->erpt_event), os::TimeoutHelper::NsToTick(1'000'000'000ul));
+            this->context->erpt_event->TimedWait(TimeSpan::FromSeconds(1));
 
             /* Force a reboot after some time if kiosk unit. */
             const auto &config = GetFatalConfig();
-            os::TimeoutHelper quest_reboot_helper(config.GetQuestRebootTimeoutInterval());
-            os::TimeoutHelper fatal_reboot_helper(config.GetFatalRebootTimeoutInterval());
+            RebootTimingObserver quest_reboot_helper(config.IsQuest(), config.GetQuestRebootTimeoutInterval());
+            RebootTimingObserver fatal_reboot_helper(config.IsFatalRebootEnabled(), config.GetFatalRebootTimeoutInterval());
 
             bool check_vol_up = true, check_vol_down = true;
             GpioPadSession vol_up_btn, vol_down_btn;
@@ -159,11 +179,10 @@ namespace ams::fatal::srv {
             BpcSleepButtonState state;
             GpioValue val;
             while (true) {
-                if ((config.IsFatalRebootEnabled() && fatal_reboot_helper.TimedOut()) ||
+                if (fatal_reboot_helper.IsRebootTiming() || (quest_reboot_helper.IsRebootTiming()) ||
                     (check_vol_up && R_SUCCEEDED(gpioPadGetValue(&vol_up_btn, &val)) && val == GpioValue_Low) ||
                     (check_vol_down && R_SUCCEEDED(gpioPadGetValue(&vol_down_btn, &val)) && val == GpioValue_Low) ||
-                    (R_SUCCEEDED(bpcGetSleepButtonState(&state)) && state == BpcSleepButtonState_Held) ||
-                    (config.IsQuest() && quest_reboot_helper.TimedOut())) {
+                    (R_SUCCEEDED(bpcGetSleepButtonState(&state)) && state == BpcSleepButtonState_Held)) {
                     /* If any of the above conditions succeeded, we should reboot. */
                     bpcRebootSystem();
                     return;
@@ -171,7 +190,7 @@ namespace ams::fatal::srv {
 
 
                 /* Wait 100 ms between button checks. */
-                svcSleepThread(100'000'000ul);
+                os::SleepThread(TimeSpan::FromMilliSeconds(100));
             }
         }
 

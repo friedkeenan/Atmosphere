@@ -18,7 +18,6 @@
 
 namespace ams::os::impl {
 
-    /* TODO: C++20 constinit */
-    OsResourceManager ResourceManagerHolder::s_resource_manager = {};
+    constinit TYPED_STORAGE(OsResourceManager) ResourceManagerHolder::s_resource_manager_storage = {};
 
 }

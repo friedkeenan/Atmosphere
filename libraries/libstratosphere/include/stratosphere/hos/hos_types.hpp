@@ -19,21 +19,48 @@
 
 namespace ams::hos {
 
-    enum Version : u16 {
-        Version_Min = 0,
-        Version_100 = Version_Min,
-        Version_200 = 1,
-        Version_300 = 2,
-        Version_400 = 3,
-        Version_500 = 4,
-        Version_600 = 5,
-        Version_700 = 6,
-        Version_800 = 7,
-        Version_810 = 8,
-        Version_900 = 9,
-        Version_910 = 10,
-        Version_Current = Version_910,
-        Version_Max = 32,
+    enum Version : u32 {
+        Version_Min     = ::ams::TargetFirmware_Min,
+
+        Version_1_0_0   = ::ams::TargetFirmware_1_0_0,
+        Version_2_0_0   = ::ams::TargetFirmware_2_0_0,
+        Version_2_1_0   = ::ams::TargetFirmware_2_1_0,
+        Version_2_2_0   = ::ams::TargetFirmware_2_2_0,
+        Version_2_3_0   = ::ams::TargetFirmware_2_3_0,
+        Version_3_0_0   = ::ams::TargetFirmware_3_0_0,
+        Version_3_0_1   = ::ams::TargetFirmware_3_0_1,
+        Version_3_0_2   = ::ams::TargetFirmware_3_0_2,
+        Version_4_0_0   = ::ams::TargetFirmware_4_0_0,
+        Version_4_0_1   = ::ams::TargetFirmware_4_0_1,
+        Version_4_1_0   = ::ams::TargetFirmware_4_1_0,
+        Version_5_0_0   = ::ams::TargetFirmware_5_0_0,
+        Version_5_0_1   = ::ams::TargetFirmware_5_0_1,
+        Version_5_0_2   = ::ams::TargetFirmware_5_0_2,
+        Version_5_1_0   = ::ams::TargetFirmware_5_1_0,
+        Version_6_0_0   = ::ams::TargetFirmware_6_0_0,
+        Version_6_0_1   = ::ams::TargetFirmware_6_0_1,
+        Version_6_1_0   = ::ams::TargetFirmware_6_1_0,
+        Version_6_2_0   = ::ams::TargetFirmware_6_2_0,
+        Version_7_0_0   = ::ams::TargetFirmware_7_0_0,
+        Version_7_0_1   = ::ams::TargetFirmware_7_0_1,
+        Version_8_0_0   = ::ams::TargetFirmware_8_0_0,
+        Version_8_0_1   = ::ams::TargetFirmware_8_0_1,
+        Version_8_1_0   = ::ams::TargetFirmware_8_1_0,
+        Version_8_1_1   = ::ams::TargetFirmware_8_1_1,
+        Version_9_0_0   = ::ams::TargetFirmware_9_0_0,
+        Version_9_0_1   = ::ams::TargetFirmware_9_0_1,
+        Version_9_1_0   = ::ams::TargetFirmware_9_1_0,
+        Version_9_2_0   = ::ams::TargetFirmware_9_2_0,
+        Version_10_0_0  = ::ams::TargetFirmware_10_0_0,
+        Version_10_0_1  = ::ams::TargetFirmware_10_0_1,
+        Version_10_0_2  = ::ams::TargetFirmware_10_0_2,
+        Version_10_0_3  = ::ams::TargetFirmware_10_0_3,
+        Version_10_0_4  = ::ams::TargetFirmware_10_0_4,
+        Version_10_1_0  = ::ams::TargetFirmware_10_1_0,
+
+        Version_Current = ::ams::TargetFirmware_Current,
+
+        Version_Max     = ::ams::TargetFirmware_Max,
     };
 
 }

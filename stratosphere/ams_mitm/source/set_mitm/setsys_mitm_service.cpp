@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "setsys_mitm_service.hpp"
 #include "settings_sd_kvs.hpp"
 
@@ -22,7 +23,7 @@ namespace ams::mitm::settings {
 
     namespace {
 
-        os::Mutex g_firmware_version_lock;
+        os::Mutex g_firmware_version_lock(false);
         bool g_cached_firmware_version;
         settings::FirmwareVersion g_firmware_version;
         settings::FirmwareVersion g_ams_firmware_version;
@@ -30,7 +31,7 @@ namespace ams::mitm::settings {
         void CacheFirmwareVersion() {
             std::scoped_lock lk(g_firmware_version_lock);
 
-            if (g_cached_firmware_version) {
+            if (AMS_LIKELY(g_cached_firmware_version)) {
                 return;
             }
 
@@ -55,15 +56,11 @@ namespace ams::mitm::settings {
                 const auto api_info = exosphere::GetApiInfo();
                 const char emummc_char = emummc::IsActive() ? 'E' : 'S';
 
-                /* GCC complains about the following snprintf possibly truncating, but this is not a problem and has been carefully accounted for. */
-                #pragma GCC diagnostic push
-                #pragma GCC diagnostic ignored "-Wformat-truncation"
-                {
-                    char display_version[sizeof(g_ams_firmware_version.display_version)];
-                    std::snprintf(display_version, sizeof(display_version), "%s|AMS %u.%u.%u|%c", g_ams_firmware_version.display_version, api_info.GetMajorVersion(), api_info.GetMinorVersion(), api_info.GetMicroVersion(), emummc_char);
-                    std::memcpy(g_ams_firmware_version.display_version, display_version, sizeof(display_version));
-                }
-                #pragma GCC diagnostic pop
+                /* NOTE: We have carefully accounted for the size of the string we print. */
+                /* No truncation occurs assuming two-digits for all version number components. */
+                char display_version[sizeof(g_ams_firmware_version.display_version)];
+                std::snprintf(display_version, sizeof(display_version), "%s|AMS %u.%u.%u|%c", g_ams_firmware_version.display_version, api_info.GetMajorVersion(), api_info.GetMinorVersion(), api_info.GetMicroVersion(), emummc_char);
+                std::memcpy(g_ams_firmware_version.display_version, display_version, sizeof(display_version));
             }
 
             g_cached_firmware_version = true;

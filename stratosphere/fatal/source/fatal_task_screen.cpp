@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "fatal_task_screen.hpp"
 #include "fatal_config.hpp"
 #include "fatal_font.hpp"
@@ -93,7 +94,7 @@ namespace ams::fatal::srv {
             ON_SCOPE_EXIT { viCloseDisplay(&temp_display); };
 
             /* Turn on the screen. */
-            if (hos::GetVersion() >= hos::Version_300) {
+            if (hos::GetVersion() >= hos::Version_3_0_0) {
                 R_TRY(viSetDisplayPowerState(&temp_display, ViPowerState_On));
             } else {
                 /* Prior to 3.0.0, the ViPowerState enum was different (0 = Off, 1 = On). */
@@ -141,7 +142,7 @@ namespace ams::fatal::srv {
             R_TRY(viGetDisplayLogicalResolution(&this->display, &display_width, &display_height));
 
             /* viSetDisplayMagnification was added in 3.0.0. */
-            if (hos::GetVersion() >= hos::Version_300) {
+            if (hos::GetVersion() >= hos::Version_3_0_0) {
                 R_TRY(viSetDisplayMagnification(&this->display, 0, 0, display_width, display_height));
             }
 
@@ -213,18 +214,18 @@ namespace ams::fatal::srv {
             font::AddSpacingLines(0.5f);
             font::PrintFormatLine(  "Program:  %016lX", static_cast<u64>(this->context->program_id));
             font::AddSpacingLines(0.5f);
-            font::PrintFormatLine(u8"Firmware: %s (Atmosphère %u.%u.%u-%s)", config.GetFirmwareVersion().display_version, ATMOSPHERE_RELEASE_VERSION, ams::GetGitRevision());
+            font::PrintFormatLine("Firmware: %s (Atmosphère %u.%u.%u-%s)", config.GetFirmwareVersion().display_version, ATMOSPHERE_RELEASE_VERSION, ams::GetGitRevision());
             font::AddSpacingLines(1.5f);
             if (!exosphere::ResultVersionMismatch::Includes(this->context->result)) {
                 font::Print(config.GetErrorDescription());
             } else {
                 /* Print a special message for atmosphere version mismatch. */
-                font::Print(u8"Atmosphère version mismatch detected.\n\n"
-                                   u8"Please press the POWER Button to restart the console normally, or a VOL button\n"
-                                   u8"to reboot to a payload (or RCM, if none is present). If you are unable to\n"
-                                   u8"restart the console, hold the POWER Button for 12 seconds to turn the console off.\n\n"
-                                   u8"Please ensure that all Atmosphère components are updated.\n"
-                                   u8"github.com/Atmosphere-NX/Atmosphere/releases\n");
+                font::Print("Atmosphère version mismatch detected.\n\n"
+                                   "Please press the POWER Button to restart the console normally, or a VOL button\n"
+                                   "to reboot to a payload (or RCM, if none is present). If you are unable to\n"
+                                   "restart the console, hold the POWER Button for 12 seconds to turn the console off.\n\n"
+                                   "Please ensure that all Atmosphère components are updated.\n"
+                                   "github.com/Atmosphere-NX/Atmosphere/releases\n");
             }
 
             /* Add a line. */
@@ -418,7 +419,7 @@ namespace ams::fatal::srv {
 
         Result ShowFatalTask::Run() {
             /* Don't show the fatal error screen until we've verified the battery is okay. */
-            eventWait(const_cast<Event *>(&this->context->battery_event), std::numeric_limits<u64>::max());
+            this->context->battery_event->Wait();
 
             return ShowFatal();
         }

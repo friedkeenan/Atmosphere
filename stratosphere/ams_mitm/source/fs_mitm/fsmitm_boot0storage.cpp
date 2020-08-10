@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "fsmitm_boot0storage.hpp"
 
 namespace ams::mitm::fs {
@@ -21,7 +22,7 @@ namespace ams::mitm::fs {
 
     namespace {
 
-        os::Mutex g_boot0_access_mutex;
+        os::Mutex g_boot0_access_mutex(false);
         u8 g_boot0_bct_buffer[Boot0Storage::BctEndOffset];
 
     }

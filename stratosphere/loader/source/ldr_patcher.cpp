@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "ldr_patcher.hpp"
 
 namespace ams::ldr {
@@ -29,7 +30,7 @@ namespace ams::ldr {
         constexpr const char * const LoaderSdMountName = "#amsldr-sdpatch";
         static_assert(sizeof(LoaderSdMountName) <= fs::MountNameLengthMax);
 
-        os::Mutex g_ldr_sd_lock;
+        os::Mutex g_ldr_sd_lock(false);
         bool g_mounted_sd;
 
         bool EnsureSdCardMounted() {

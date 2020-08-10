@@ -15,6 +15,7 @@
  */
 #include "ldr_capabilities.hpp"
 #include "ldr_content_management.hpp"
+#include "ldr_development_manager.hpp"
 #include "ldr_launch_record.hpp"
 #include "ldr_meta.hpp"
 #include "ldr_patcher.hpp"
@@ -84,29 +85,32 @@ namespace ams::ldr {
 
         Result ValidateProgramVersion(ncm::ProgramId program_id, u32 version) {
             /* No version verification is done before 8.1.0. */
-            R_SUCCEED_IF(hos::GetVersion() < hos::Version_810);
+            R_SUCCEED_IF(hos::GetVersion() < hos::Version_8_1_0);
+
+            /* No verification is done if development. */
+            R_SUCCEED_IF(IsDevelopmentForAntiDowngradeCheck());
 
             /* Do version-dependent validation, if compiled to do so. */
 #ifdef LDR_VALIDATE_PROCESS_VERSION
             const MinimumProgramVersion *entries = nullptr;
             size_t num_entries = 0;
-            switch (hos::GetVersion()) {
-                case hos::Version_810:
-                    entries = g_MinimumProgramVersions810;
-                    num_entries = g_MinimumProgramVersionsCount810;
-                    break;
-                case hos::Version_900:
-                    entries = g_MinimumProgramVersions900;
-                    num_entries = g_MinimumProgramVersionsCount900;
-                    break;
-                case hos::Version_910:
-                    entries = g_MinimumProgramVersions910;
-                    num_entries = g_MinimumProgramVersionsCount910;
-                    break;
-                default:
-                    entries = nullptr;
-                    num_entries = 0;
-                    break;
+
+            const auto hos_version = hos::GetVersion();
+            if (hos_version >= hos::Version_10_1_0) {
+                entries = g_MinimumProgramVersions1010;
+                num_entries = g_MinimumProgramVersionsCount1010;
+            } else if (hos_version >= hos::Version_10_0_0) {
+                entries = g_MinimumProgramVersions1000;
+                num_entries = g_MinimumProgramVersionsCount1000;
+            } else if (hos_version >= hos::Version_9_1_0) {
+                entries = g_MinimumProgramVersions910;
+                num_entries = g_MinimumProgramVersionsCount910;
+            } else if (hos_version >= hos::Version_9_0_0) {
+                entries = g_MinimumProgramVersions900;
+                num_entries = g_MinimumProgramVersionsCount900;
+            } else if (hos_version >= hos::Version_8_1_0) {
+                entries = g_MinimumProgramVersions810;
+                num_entries = g_MinimumProgramVersionsCount810;
             }
 
             for (size_t i = 0; i < num_entries; i++) {
@@ -206,7 +210,7 @@ namespace ams::ldr {
             return ResultSuccess();
         }
 
-        Result ValidateMeta(const Meta *meta, const ncm::ProgramLocation &loc) {
+        Result ValidateMeta(const Meta *meta, const ncm::ProgramLocation &loc, const fs::CodeInfo &code_info) {
             /* Validate version. */
             R_TRY(ValidateProgramVersion(loc.program_id, meta->npdm->version));
 
@@ -216,6 +220,21 @@ namespace ams::ldr {
 
             /* Validate the kernel capabilities. */
             R_TRY(caps::ValidateCapabilities(meta->acid_kac, meta->acid->kac_size, meta->aci_kac, meta->aci->kac_size));
+
+            /* If we have data to validate, validate it. */
+            if (code_info.is_signed && meta->is_signed) {
+                const u8 *sig         = code_info.signature;
+                const size_t sig_size = sizeof(code_info.signature);
+                const u8 *mod         = static_cast<u8 *>(meta->modulus);
+                const size_t mod_size = crypto::Rsa2048PssSha256Verifier::ModulusSize;
+                const u8 *exp         = fssystem::GetAcidSignatureKeyPublicExponent();
+                const size_t exp_size = fssystem::AcidSignatureKeyPublicExponentSize;
+                const u8 *hsh         = code_info.hash;
+                const size_t hsh_size = sizeof(code_info.hash);
+                const bool is_signature_valid = crypto::VerifyRsa2048PssSha256WithHash(sig, sig_size, mod, mod_size, exp, exp_size, hsh, hsh_size);
+
+                R_UNLESS(is_signature_valid, ResultInvalidNcaSignature());
+            }
 
             /* All good. */
             return ResultSuccess();
@@ -264,7 +283,7 @@ namespace ams::ldr {
                 flags |= svc::CreateProcessFlag_IsApplication;
 
                 /* 7.0.0+: Set OptimizeMemoryAllocation if relevant. */
-                if (hos::GetVersion() >= hos::Version_700) {
+                if (hos::GetVersion() >= hos::Version_7_0_0) {
                     if (meta_flags & Npdm::MetaFlag_OptimizeMemoryAllocation) {
                         flags |= svc::CreateProcessFlag_OptimizeMemoryAllocation;
                     }
@@ -272,7 +291,7 @@ namespace ams::ldr {
             }
 
             /* 5.0.0+ Set Pool Partition. */
-            if (hos::GetVersion() >= hos::Version_500) {
+            if (hos::GetVersion() >= hos::Version_5_0_0) {
                 switch (GetPoolPartition(meta)) {
                     case Acid::PoolPartition_Application:
                         if (IsApplet(meta)) {
@@ -293,7 +312,7 @@ namespace ams::ldr {
                     default:
                         return ResultInvalidMeta();
                 }
-            } else if (hos::GetVersion() >= hos::Version_400) {
+            } else if (hos::GetVersion() >= hos::Version_4_0_0) {
                 /* On 4.0.0+, the corresponding bit was simply "UseSecureMemory". */
                 if (meta->acid->flags & Acid::AcidFlag_DeprecatedUseSecureMemory) {
                     flags |= svc::CreateProcessFlag_DeprecatedUseSecureMemory;
@@ -318,7 +337,7 @@ namespace ams::ldr {
             R_TRY(GetCreateProcessFlags(&out->flags, meta, flags));
 
             /* 3.0.0+ System Resource Size. */
-            if (hos::GetVersion() >= hos::Version_300) {
+            if (hos::GetVersion() >= hos::Version_3_0_0) {
                 /* Validate size is aligned. */
                 R_UNLESS(util::IsAligned(meta->npdm->system_resource_size, os::MemoryBlockUnitSize), ResultInvalidSize());
 
@@ -374,7 +393,7 @@ namespace ams::ldr {
             /* Calculate ASLR. */
             uintptr_t aslr_start = 0;
             uintptr_t aslr_size  = 0;
-            if (hos::GetVersion() >= hos::Version_200) {
+            if (hos::GetVersion() >= hos::Version_2_0_0) {
                 switch (out_param->flags & svc::CreateProcessFlag_AddressSpaceMask) {
                     case svc::CreateProcessFlag_AddressSpace32Bit:
                     case svc::CreateProcessFlag_AddressSpace32BitWithoutAlias:
@@ -574,10 +593,10 @@ namespace ams::ldr {
 
             /* Load meta, possibly from cache. */
             Meta meta;
-            R_TRY(LoadMetaFromCache(&meta, loc.program_id, override_status));
+            R_TRY(LoadMetaFromCache(&meta, loc, override_status));
 
             /* Validate meta. */
-            R_TRY(ValidateMeta(&meta, loc));
+            R_TRY(ValidateMeta(&meta, loc, mount.GetCodeInfo()));
 
             /* Load, validate NSOs. */
             R_TRY(LoadNsoHeaders(nso_headers, has_nso));
@@ -632,7 +651,7 @@ namespace ams::ldr {
         {
             ScopedCodeMount mount(loc);
             R_TRY(mount.GetResult());
-            R_TRY(LoadMeta(&meta, loc.program_id, mount.GetOverrideStatus()));
+            R_TRY(LoadMeta(&meta, loc, mount.GetOverrideStatus()));
             if (out_status != nullptr) {
                 *out_status = mount.GetOverrideStatus();
             }

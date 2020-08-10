@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "sm_utils.hpp"
 
 namespace ams::sm::impl {
@@ -20,22 +21,22 @@ namespace ams::sm::impl {
     namespace {
 
         /* Globals. */
-        os::RecursiveMutex g_user_session_mutex;
-        os::RecursiveMutex g_mitm_ack_session_mutex;
-        os::RecursiveMutex g_per_thread_session_mutex;
+        os::Mutex g_user_session_mutex(true);
+        os::Mutex g_mitm_ack_session_mutex(true);
+        os::Mutex g_per_thread_session_mutex(true);
 
     }
 
     /* Utilities. */
-    os::RecursiveMutex &GetUserSessionMutex() {
+    os::Mutex &GetUserSessionMutex() {
         return g_user_session_mutex;
     }
 
-    os::RecursiveMutex &GetMitmAcknowledgementSessionMutex() {
+    os::Mutex &GetMitmAcknowledgementSessionMutex() {
         return g_mitm_ack_session_mutex;
     }
 
-    os::RecursiveMutex &GetPerThreadSessionMutex() {
+    os::Mutex &GetPerThreadSessionMutex() {
         return g_per_thread_session_mutex;
     }
 

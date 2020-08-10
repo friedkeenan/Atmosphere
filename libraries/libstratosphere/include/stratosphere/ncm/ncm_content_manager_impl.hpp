@@ -30,6 +30,34 @@
 
 namespace ams::ncm {
 
+    class ContentMetaMemoryResource : public MemoryResource {
+        private:
+            mem::StandardAllocator allocator;
+            size_t peak_total_alloc_size;
+            size_t peak_alloc_size;
+        public:
+            explicit ContentMetaMemoryResource(void *heap, size_t heap_size) : allocator(heap, heap_size) { /* ... */ }
+
+            mem::StandardAllocator *GetAllocator() { return std::addressof(this->allocator); }
+            size_t GetPeakTotalAllocationSize() const { return this->peak_total_alloc_size; }
+            size_t GetPeakAllocationSize() const { return this->peak_alloc_size; }
+        private:
+            virtual void *AllocateImpl(size_t size, size_t alignment) override {
+                void *mem = this->allocator.Allocate(size, alignment);
+                this->peak_total_alloc_size = std::max(this->allocator.Hash().allocated_size, this->peak_total_alloc_size);
+                this->peak_alloc_size = std::max(size, this->peak_alloc_size);
+                return mem;
+            }
+
+            virtual void DeallocateImpl(void *buffer, size_t size, size_t alignment) override {
+                return this->allocator.Free(buffer);
+            }
+
+            virtual bool IsEqualImpl(const MemoryResource &resource) const override {
+                return this == std::addressof(resource);
+            }
+    };
+
     struct SystemSaveDataInfo {
         u64 id;
         u64 size;
@@ -37,9 +65,9 @@ namespace ams::ncm {
         u32 flags;
         fs::SaveDataSpaceId space_id;
     };
-    static_assert(std::is_pod<SystemSaveDataInfo>::value);
+    static_assert(util::is_pod<SystemSaveDataInfo>::value);
 
-    class ContentManagerImpl final : public IContentManager {
+    class ContentManagerImpl final {
         private:
             constexpr static size_t MaxContentStorageRoots         = 8;
             constexpr static size_t MaxContentMetaDatabaseRoots    = 8;
@@ -67,12 +95,13 @@ namespace ams::ncm {
                 SystemSaveDataInfo info;
                 std::shared_ptr<IContentMetaDatabase> content_meta_database;
                 std::optional<kvdb::MemoryKeyValueStore<ContentMetaKey>> kvs;
+                ContentMetaMemoryResource *memory_resource;
                 u32 max_content_metas;
 
                 ContentMetaDatabaseRoot() { /* ... */ }
             };
         private:
-            os::RecursiveMutex mutex;
+            os::Mutex mutex;
             bool initialized;
             ContentStorageRoot content_storage_roots[MaxContentStorageRoots];
             ContentMetaDatabaseRoot content_meta_database_roots[MaxContentMetaDatabaseRoots];
@@ -80,7 +109,7 @@ namespace ams::ncm {
             u32 num_content_meta_entries;
             RightsIdCache rights_id_cache;
         public:
-            ContentManagerImpl() : initialized(false) { /* ... */ };
+            ContentManagerImpl() : mutex(true), initialized(false) { /* ... */ };
             ~ContentManagerImpl();
         public:
             Result Initialize(const ContentManagerConfig &config);
@@ -92,8 +121,8 @@ namespace ams::ncm {
             Result InitializeContentStorageRoot(ContentStorageRoot *out, StorageId storage_id, fs::ContentStorageId content_storage_id);
             Result InitializeGameCardContentStorageRoot(ContentStorageRoot *out);
 
-            Result InitializeContentMetaDatabaseRoot(ContentMetaDatabaseRoot *out, StorageId storage_id, const SystemSaveDataInfo &info, size_t max_content_metas);
-            Result InitializeGameCardContentMetaDatabaseRoot(ContentMetaDatabaseRoot *out, size_t max_content_metas);
+            Result InitializeContentMetaDatabaseRoot(ContentMetaDatabaseRoot *out, StorageId storage_id, const SystemSaveDataInfo &info, size_t max_content_metas, ContentMetaMemoryResource *mr);
+            Result InitializeGameCardContentMetaDatabaseRoot(ContentMetaDatabaseRoot *out, size_t max_content_metas, ContentMetaMemoryResource *mr);
 
             Result BuildContentMetaDatabase(StorageId storage_id);
             Result ImportContentMetaDatabase(StorageId storage_id, bool from_signed_partition);
@@ -102,20 +131,22 @@ namespace ams::ncm {
             Result EnsureAndMountSystemSaveData(const char *mount, const SystemSaveDataInfo &info) const;
         public:
             /* Actual commands. */
-            virtual Result CreateContentStorage(StorageId storage_id) override;
-            virtual Result CreateContentMetaDatabase(StorageId storage_id) override;
-            virtual Result VerifyContentStorage(StorageId storage_id) override;
-            virtual Result VerifyContentMetaDatabase(StorageId storage_id) override;
-            virtual Result OpenContentStorage(sf::Out<std::shared_ptr<IContentStorage>> out, StorageId storage_id) override;
-            virtual Result OpenContentMetaDatabase(sf::Out<std::shared_ptr<IContentMetaDatabase>> out, StorageId storage_id) override;
-            virtual Result CloseContentStorageForcibly(StorageId storage_id) override;
-            virtual Result CloseContentMetaDatabaseForcibly(StorageId storage_id) override;
-            virtual Result CleanupContentMetaDatabase(StorageId storage_id) override;
-            virtual Result ActivateContentStorage(StorageId storage_id) override;
-            virtual Result InactivateContentStorage(StorageId storage_id) override;
-            virtual Result ActivateContentMetaDatabase(StorageId storage_id) override;
-            virtual Result InactivateContentMetaDatabase(StorageId storage_id) override;
-            virtual Result InvalidateRightsIdCache() override;
+            Result CreateContentStorage(StorageId storage_id);
+            Result CreateContentMetaDatabase(StorageId storage_id);
+            Result VerifyContentStorage(StorageId storage_id);
+            Result VerifyContentMetaDatabase(StorageId storage_id);
+            Result OpenContentStorage(sf::Out<std::shared_ptr<IContentStorage>> out, StorageId storage_id);
+            Result OpenContentMetaDatabase(sf::Out<std::shared_ptr<IContentMetaDatabase>> out, StorageId storage_id);
+            Result CloseContentStorageForcibly(StorageId storage_id);
+            Result CloseContentMetaDatabaseForcibly(StorageId storage_id);
+            Result CleanupContentMetaDatabase(StorageId storage_id);
+            Result ActivateContentStorage(StorageId storage_id);
+            Result InactivateContentStorage(StorageId storage_id);
+            Result ActivateContentMetaDatabase(StorageId storage_id);
+            Result InactivateContentMetaDatabase(StorageId storage_id);
+            Result InvalidateRightsIdCache();
+            Result GetMemoryReport(sf::Out<MemoryReport> out);
     };
+    static_assert(IsIContentManager<ContentManagerImpl>);
 
 }

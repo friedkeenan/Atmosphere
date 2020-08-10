@@ -58,10 +58,13 @@ dist-no-debug: all
 	mkdir atmosphere-$(AMSVER)/switch
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/contents/0100000000000008
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/contents/010000000000000D
+	mkdir -p atmosphere-$(AMSVER)/atmosphere/contents/010000000000002B
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/contents/0100000000000032
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/contents/0100000000000034
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/contents/0100000000000036
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/contents/0100000000000037
+	mkdir -p atmosphere-$(AMSVER)/atmosphere/contents/010000000000003C
+	mkdir -p atmosphere-$(AMSVER)/atmosphere/contents/0100000000000042
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/fatal_errors
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/config_templates
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/config
@@ -78,20 +81,25 @@ dist-no-debug: all
 	cp config_templates/BCT.ini atmosphere-$(AMSVER)/atmosphere/config/BCT.ini
 	cp config_templates/override_config.ini atmosphere-$(AMSVER)/atmosphere/config_templates/override_config.ini
 	cp config_templates/system_settings.ini atmosphere-$(AMSVER)/atmosphere/config_templates/system_settings.ini
+	cp config_templates/exosphere.ini atmosphere-$(AMSVER)/atmosphere/config_templates/exosphere.ini
 	cp -r config_templates/kip_patches atmosphere-$(AMSVER)/atmosphere/kip_patches
 	cp -r config_templates/exefs_patches atmosphere-$(AMSVER)/atmosphere/exefs_patches
 	cp -r config_templates/hbl_html atmosphere-$(AMSVER)/atmosphere/hbl_html
 	cp stratosphere/boot2/boot2.nsp atmosphere-$(AMSVER)/atmosphere/contents/0100000000000008/exefs.nsp
 	cp stratosphere/dmnt/dmnt.nsp atmosphere-$(AMSVER)/atmosphere/contents/010000000000000D/exefs.nsp
+	cp stratosphere/erpt/erpt.nsp atmosphere-$(AMSVER)/atmosphere/contents/010000000000002B/exefs.nsp
 	cp stratosphere/eclct.stub/eclct.stub.nsp atmosphere-$(AMSVER)/atmosphere/contents/0100000000000032/exefs.nsp
 	cp stratosphere/fatal/fatal.nsp atmosphere-$(AMSVER)/atmosphere/contents/0100000000000034/exefs.nsp
 	cp stratosphere/creport/creport.nsp atmosphere-$(AMSVER)/atmosphere/contents/0100000000000036/exefs.nsp
 	cp stratosphere/ro/ro.nsp atmosphere-$(AMSVER)/atmosphere/contents/0100000000000037/exefs.nsp
+	cp stratosphere/jpegdec/jpegdec.nsp atmosphere-$(AMSVER)/atmosphere/contents/010000000000003C/exefs.nsp
+	cp stratosphere/pgl/pgl.nsp atmosphere-$(AMSVER)/atmosphere/contents/0100000000000042/exefs.nsp
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/contents/0100000000000032/flags
 	touch atmosphere-$(AMSVER)/atmosphere/contents/0100000000000032/flags/boot2.flag
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/contents/0100000000000037/flags
 	touch atmosphere-$(AMSVER)/atmosphere/contents/0100000000000037/flags/boot2.flag
 	cp troposphere/reboot_to_payload/reboot_to_payload.nro atmosphere-$(AMSVER)/switch/reboot_to_payload.nro
+	cp troposphere/daybreak/daybreak.nro atmosphere-$(AMSVER)/switch/daybreak.nro
 	cd atmosphere-$(AMSVER); zip -r ../atmosphere-$(AMSVER).zip ./*; cd ../;
 	rm -r atmosphere-$(AMSVER)
 	mkdir out
@@ -117,10 +125,11 @@ dist: dist-no-debug
 	cp sept/sept-primary/sept-primary.elf atmosphere-$(AMSVER)-debug/sept-primary.elf
 	cp sept/sept-secondary/sept-secondary.elf atmosphere-$(AMSVER)-debug/sept-secondary.elf
 	cp sept/sept-secondary/key_derivation/key_derivation.elf atmosphere-$(AMSVER)-debug/sept-secondary-key-derivation.elf
-	cp exosphere/exosphere.elf atmosphere-$(AMSVER)-debug/exosphere.elf
-	cp exosphere/lp0fw/lp0fw.elf atmosphere-$(AMSVER)-debug/lp0fw.elf
-	cp exosphere/sc7fw/sc7fw.elf atmosphere-$(AMSVER)-debug/sc7fw.elf
-	cp exosphere/rebootstub/rebootstub.elf atmosphere-$(AMSVER)-debug/rebootstub.elf
+	cp exosphere/loader_stub/loader_stub.elf atmosphere-$(AMSVER)-debug/exosphere-loader-stub.elf
+	cp exosphere/program/program.elf atmosphere-$(AMSVER)-debug/exosphere-program.elf
+	cp exosphere/warmboot/warmboot.elf atmosphere-$(AMSVER)-debug/exosphere-warmboot.elf
+	cp exosphere/program/sc7fw/sc7fw.elf atmosphere-$(AMSVER)-debug/exosphere-sc7fw.elf
+	cp exosphere/program/rebootstub/rebootstub.elf atmosphere-$(AMSVER)-debug/exosphere-rebootstub.elf
 	cp mesosphere/kernel_ldr/kernel_ldr.elf atmosphere-$(AMSVER)-debug/kernel_ldr.elf
 	cp stratosphere/ams_mitm/ams_mitm.elf atmosphere-$(AMSVER)-debug/ams_mitm.elf
 	cp stratosphere/boot/boot.elf atmosphere-$(AMSVER)-debug/boot.elf
@@ -134,6 +143,10 @@ dist: dist-no-debug
 	cp stratosphere/ro/ro.elf atmosphere-$(AMSVER)-debug/ro.elf
 	cp stratosphere/sm/sm.elf atmosphere-$(AMSVER)-debug/sm.elf
 	cp stratosphere/spl/spl.elf atmosphere-$(AMSVER)-debug/spl.elf
+	cp stratosphere/erpt/erpt.elf atmosphere-$(AMSVER)-debug/erpt.elf
+	cp stratosphere/jpegdec/jpegdec.elf atmosphere-$(AMSVER)-debug/jpegdec.elf
+	cp stratosphere/pgl/pgl.elf atmosphere-$(AMSVER)-debug/pgl.elf
+	cp troposphere/daybreak/daybreak.elf atmosphere-$(AMSVER)-debug/daybreak.elf
 	cd atmosphere-$(AMSVER)-debug; zip -r ../atmosphere-$(AMSVER)-debug.zip ./*; cd ../;
 	rm -r atmosphere-$(AMSVER)-debug
 	mv atmosphere-$(AMSVER)-debug.zip out/atmosphere-$(AMSVER)-debug.zip

@@ -13,9 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <stratosphere/spl.hpp>
-
+#include <stratosphere.hpp>
 #include "gpio_initial_configuration.hpp"
 #include "gpio_utils.hpp"
 
@@ -45,11 +43,11 @@ namespace ams::gpio {
         const auto hos_ver = hos::GetVersion();
 
         /* Choose GPIO map. */
-        if (hos_ver >= hos::Version_200) {
+        if (hos_ver >= hos::Version_2_0_0) {
             switch (hw_type) {
                 case spl::HardwareType::Icosa:
                     {
-                        if (hos_ver >= hos::Version_400) {
+                        if (hos_ver >= hos::Version_4_0_0) {
                             configs     = InitialConfigsIcosa4x;
                             num_configs = NumInitialConfigsIcosa4x;
                         } else {

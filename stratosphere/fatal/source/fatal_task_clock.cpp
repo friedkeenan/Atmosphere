@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "fatal_task_clock.hpp"
 
 namespace ams::fatal::srv {
@@ -37,7 +38,7 @@ namespace ams::fatal::srv {
 
         /* Task implementation. */
         Result AdjustClockTask::AdjustClockForModule(PcvModule module, u32 hz) {
-            if (hos::GetVersion() >= hos::Version_800) {
+            if (hos::GetVersion() >= hos::Version_8_0_0) {
                 /* On 8.0.0+, convert to module id + use clkrst API. */
                 PcvModuleId module_id;
                 R_TRY(pcvGetModuleId(&module_id, module));

@@ -42,6 +42,8 @@ __metadata_ini_offset:
     .quad  0                          /* INI1 base address. */
 __metadata_kernelldr_offset:
     .quad  0                          /* Kernel Loader base address. */
+__metadata_target_firmware:
+    .word  0xCCCCCCCC                 /* Target firmware. */
 __metadata_kernel_layout:
     .word _start - _start             /* rx_offset */
     .word __rodata_start     - _start /* rx_end_offset */
@@ -55,9 +57,16 @@ __metadata_kernel_layout:
     .word _DYNAMIC           - _start /* dynamic_offset */
     .word __init_array_start - _start /* init_array_offset */
     .word __init_array_end   - _start /* init_array_end_offset */
-.if (. - __metadata_begin) != 0x44
+.if (. - __metadata_begin) != 0x48
     .error "Incorrect Mesosphere Metadata"
 .endif
+
+.global     _ZN3ams4kern17GetTargetFirmwareEv
+.type       _ZN3ams4kern17GetTargetFirmwareEv, %function
+_ZN3ams4kern17GetTargetFirmwareEv:
+    adr x0, __metadata_target_firmware
+    ldr w0, [x0]
+    ret
 
 /* ams::kern::init::StartCore0(uintptr_t, uintptr_t) */
 .section    .crt0.text._ZN3ams4kern4init10StartCore0Emm, "ax", %progbits
@@ -85,6 +94,18 @@ core0_el2:
 core0_el1:
     bl _ZN3ams4kern4init19DisableMmuAndCachesEv
 
+    /* Get the target firmware from exosphere. */
+    LOAD_IMMEDIATE_32(w0, 0xC3000004)
+    mov w1, #65000
+    smc #1
+    cmp x0, #0
+0:
+    b.ne 0b
+
+    /* Store the target firmware. */
+    adr x0, __metadata_target_firmware
+    str w1, [x0]
+
     /* We want to invoke kernel loader. */
     adr x0, _start
     adr x1, __metadata_kernel_layout
@@ -92,6 +113,8 @@ core0_el1:
     add x2, x0, x2
     LOAD_FROM_LABEL(x3, __metadata_kernelldr_offset)
     add x3, x0, x3
+
+    /* Invoke kernel loader. */
     blr x3
 
     /* At this point kernelldr has been invoked, and we are relocated at a random virtual address. */

@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "boot_display.hpp"
 #include "boot_i2c_utils.hpp"
 #include "boot_pmc_wrapper.hpp"
@@ -56,12 +57,16 @@ namespace ams::boot {
         constexpr size_t ApbMiscSize =     os::MemoryPageSize;
         constexpr size_t MipiCalSize =     os::MemoryPageSize;
 
+        constexpr s32 DsiWaitForCommandMilliSecondsMax        = 250;
+        constexpr s32 DsiWaitForCommandCompletionMilliSeconds = 5;
+        constexpr s32 DsiWaitForHostControlMilliSecondsMax    = 150;
+
         /* Types. */
 
         /* Globals. */
         bool g_is_display_intialized = false;
         u32 *g_frame_buffer = nullptr;
-        bool g_is_mariko = false;
+        spl::SocType g_soc_type = spl::SocType_Erista;
         u32 g_lcd_vendor = 0;
         Handle g_dc_das_hnd = INVALID_HANDLE;
         u8 g_frame_buffer_storage[DeviceAddressSpaceAlignSize + FrameBufferSize];
@@ -90,10 +95,9 @@ namespace ams::boot {
         }
 
         inline void DoSocDependentRegisterWrites(uintptr_t base_address, const RegisterWrite *reg_writes_erista, size_t num_writes_erista, const RegisterWrite *reg_writes_mariko, size_t num_writes_mariko) {
-            if (g_is_mariko) {
-                DoRegisterWrites(base_address, reg_writes_mariko, num_writes_mariko);
-            } else {
-                DoRegisterWrites(base_address, reg_writes_erista, num_writes_erista);
+            switch (g_soc_type) {
+                case spl::SocType_Erista: DoRegisterWrites(base_address, reg_writes_erista, num_writes_erista); break;
+                case spl::SocType_Mariko: DoRegisterWrites(base_address, reg_writes_mariko, num_writes_mariko); break;
             }
         }
 
@@ -151,10 +155,10 @@ namespace ams::boot {
         }
 
         void WaitDsiTrigger() {
-            os::TimeoutHelper timeout_helper(250'000'000ul);
+            os::Tick timeout = os::GetSystemTick() + os::ConvertToTick(TimeSpan::FromMilliSeconds(DsiWaitForCommandMilliSecondsMax));
 
             while (true) {
-                if (timeout_helper.TimedOut()) {
+                if (os::GetSystemTick() >= timeout) {
                     break;
                 }
                 if (reg::Read(g_dsi_regs + sizeof(u32) * DSI_TRIGGER) == 0) {
@@ -162,14 +166,14 @@ namespace ams::boot {
                 }
             }
 
-            svcSleepThread(5'000'000ul);
+            os::SleepThread(TimeSpan::FromMilliSeconds(DsiWaitForCommandCompletionMilliSeconds));
         }
 
         void WaitDsiHostControl() {
-            os::TimeoutHelper timeout_helper(150'000'000ul);
+            os::Tick timeout = os::GetSystemTick() + os::ConvertToTick(TimeSpan::FromMilliSeconds(DsiWaitForHostControlMilliSecondsMax));
 
             while (true) {
-                if (timeout_helper.TimedOut()) {
+                if (os::GetSystemTick() >= timeout) {
                     break;
                 }
                 if ((reg::Read(g_dsi_regs + sizeof(u32) * DSI_HOST_CONTROL) & DSI_HOST_CONTROL_IMM_BTA) == 0) {
@@ -183,7 +187,7 @@ namespace ams::boot {
     void InitializeDisplay() {
         /* Setup globals. */
         InitializeRegisterBaseAddresses();
-        g_is_mariko = spl::IsMariko();
+        g_soc_type = spl::GetSocType();
         InitializeFrameBuffer();
 
         /* Turn on DSI/voltage rail. */
@@ -194,7 +198,7 @@ namespace ams::boot {
 
             i2c::driver::OpenSession(&i2c_session, I2cDevice_Max77620Pmic);
 
-            if (g_is_mariko) {
+            if (g_soc_type == spl::SocType_Mariko) {
                 WriteI2cRegister(i2c_session, 0x18, 0x3A);
                 WriteI2cRegister(i2c_session, 0x1F, 0x71);
             }
@@ -237,7 +241,7 @@ namespace ams::boot {
 
         /* Configure display interface and display. */
         reg::Write(g_mipi_cal_regs + 0x060, 0);
-        if (g_is_mariko) {
+        if (g_soc_type == spl::SocType_Mariko) {
             reg::Write(g_mipi_cal_regs + 0x058, 0);
             reg::Write(g_apb_misc_regs + 0xAC0, 0);
         }
@@ -362,7 +366,7 @@ namespace ams::boot {
         DO_SOC_DEPENDENT_REGISTER_WRITES(g_dsi_regs, DisplayConfigDsi01Init11);
         DO_SOC_DEPENDENT_REGISTER_WRITES(g_mipi_cal_regs, DisplayConfigMipiCal03);
         DO_REGISTER_WRITES(g_mipi_cal_regs, DisplayConfigMipiCal04);
-        if (g_is_mariko) {
+        if (g_soc_type == spl::SocType_Mariko) {
             /* On Mariko the above configurations are executed twice, for some reason. */
             DO_SOC_DEPENDENT_REGISTER_WRITES(g_mipi_cal_regs, DisplayConfigMipiCal02);
             DO_SOC_DEPENDENT_REGISTER_WRITES(g_dsi_regs, DisplayConfigDsi01Init11);

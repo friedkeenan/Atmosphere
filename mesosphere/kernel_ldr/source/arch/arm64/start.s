@@ -18,9 +18,21 @@
 #define cpuactlr_el1 s3_1_c15_c2_0
 #define cpuectlr_el1 s3_1_c15_c2_1
 
+#define LOAD_IMMEDIATE_32(reg, val)                \
+    mov  reg, #(((val) >> 0x00) & 0xFFFF);         \
+    movk reg, #(((val) >> 0x10) & 0xFFFF), lsl#16
+
 .section    .crt0.text.start, "ax", %progbits
 .global     _start
 _start:
+    b _main
+__metadata_begin:
+    .ascii "MLD0"                     /* Magic */
+__metadata_target_firmware:
+    .word  0xCCCCCCCC                 /* Target Firmware. */
+__metadata_reserved:
+    .word  0xCCCCCCCC                 /* Reserved. */
+_main:
     /* KernelLdr_Main(uintptr_t kernel_base_address, KernelMap *kernel_map, uintptr_t ini1_base_address); */
     adr x18, _start
     adr x16, __external_references
@@ -38,12 +50,25 @@ _start:
     ldr x17, [x17, #0x10] /* stack top */
     add sp, x17, x18
 
-    /* Stack is now set up. */
-    /* Apply relocations and call init array for KernelLdr. */
+    /* Stack is now set up, so save important state. */
     sub sp, sp, #0x30
     stp x0, x1, [sp, #0x00]
     stp x2, x30, [sp, #0x10]
     stp xzr, xzr, [sp, #0x20]
+
+    /* Get the target firmware from exosphere. */
+    LOAD_IMMEDIATE_32(w0, 0xC3000004)
+    mov w1, #65000
+    smc #1
+    cmp x0, #0
+0:
+    b.ne 0b
+
+    /* Store the target firmware. */
+    adr x0, __metadata_target_firmware
+    str w1, [x0]
+
+    /* Apply relocations and call init array for KernelLdr. */
     adr x0, _start
     adr x1, __external_references
     ldr x1, [x1, #0x18] /* .dynamic. */
@@ -95,6 +120,14 @@ _start:
     ldr x2, [sp, #0x20]
     mov sp, x2
     br  x1
+
+
+.global     _ZN3ams4kern17GetTargetFirmwareEv
+.type       _ZN3ams4kern17GetTargetFirmwareEv, %function
+_ZN3ams4kern17GetTargetFirmwareEv:
+    adr x0, __metadata_target_firmware
+    ldr w0, [x0]
+    ret
 
 .balign 8
 __external_references:

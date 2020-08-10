@@ -142,6 +142,8 @@ namespace ams::kern {
         KMemoryPermission_KernelWrite       = ams::svc::MemoryPermission_Write   << KMemoryPermission_KernelShift,
         KMemoryPermission_KernelExecute     = ams::svc::MemoryPermission_Execute << KMemoryPermission_KernelShift,
 
+        KMemoryPermission_NotMapped         = (1 << (2 * KMemoryPermission_KernelShift)),
+
         KMemoryPermission_KernelReadWrite   = KMemoryPermission_KernelRead | KMemoryPermission_KernelWrite,
         KMemoryPermission_KernelReadExecute = KMemoryPermission_KernelRead | KMemoryPermission_KernelExecute,
 
@@ -153,26 +155,28 @@ namespace ams::kern {
         KMemoryPermission_UserReadExecute   = KMemoryPermission_UserRead | KMemoryPermission_UserExecute,
 
         KMemoryPermission_UserMask          = ams::svc::MemoryPermission_Read | ams::svc::MemoryPermission_Write | ams::svc::MemoryPermission_Execute,
+
+        KMemoryPermission_IpcLockChangeMask = KMemoryPermission_NotMapped | KMemoryPermission_UserReadWrite,
     };
 
     constexpr KMemoryPermission ConvertToKMemoryPermission(ams::svc::MemoryPermission perm) {
-        return static_cast<KMemoryPermission>((perm & KMemoryPermission_UserMask) | KMemoryPermission_KernelRead | ((perm & KMemoryPermission_UserWrite) << KMemoryPermission_KernelShift));
+        return static_cast<KMemoryPermission>((perm & KMemoryPermission_UserMask) | KMemoryPermission_KernelRead | ((perm & KMemoryPermission_UserWrite) << KMemoryPermission_KernelShift) | (perm == ams::svc::MemoryPermission_None ? KMemoryPermission_NotMapped : KMemoryPermission_None));
     }
 
     enum KMemoryAttribute : u8 {
         KMemoryAttribute_None           = 0x00,
-        KMemoryAttribute_Mask           = 0x7F,
-        KMemoryAttribute_All            = KMemoryAttribute_Mask,
-        KMemoryAttribute_DontCareMask   = 0x80,
+        KMemoryAttribute_UserMask       = 0x7F,
+        KMemoryAttribute_All            = 0xFF,
 
         KMemoryAttribute_Locked         = ams::svc::MemoryAttribute_Locked,
         KMemoryAttribute_IpcLocked      = ams::svc::MemoryAttribute_IpcLocked,
         KMemoryAttribute_DeviceShared   = ams::svc::MemoryAttribute_DeviceShared,
         KMemoryAttribute_Uncached       = ams::svc::MemoryAttribute_Uncached,
-    };
 
-    static_assert((KMemoryAttribute_Mask & KMemoryAttribute_DontCareMask) == 0);
-    static_assert(static_cast<typename std::underlying_type<KMemoryAttribute>::type>(~(KMemoryAttribute_Mask | KMemoryAttribute_DontCareMask)) == 0);
+        KMemoryAttribute_AnyLocked      = 0x80,
+
+        KMemoryAttribute_SetMask        = KMemoryAttribute_Uncached,
+    };
 
     struct KMemoryInfo {
         uintptr_t address;
@@ -189,7 +193,7 @@ namespace ams::kern {
                 .addr             = this->address,
                 .size             = this->size,
                 .state            = static_cast<ams::svc::MemoryState>(this->state & KMemoryState_Mask),
-                .attr             = static_cast<ams::svc::MemoryAttribute>(this->attribute & KMemoryAttribute_Mask),
+                .attr             = static_cast<ams::svc::MemoryAttribute>(this->attribute & KMemoryAttribute_UserMask),
                 .perm             = static_cast<ams::svc::MemoryPermission>(this->perm & KMemoryPermission_UserMask),
                 .ipc_refcount     = this->ipc_lock_count,
                 .device_refcount  = this->device_use_count,
@@ -214,6 +218,26 @@ namespace ams::kern {
 
         constexpr uintptr_t GetLastAddress() const {
             return this->GetEndAddress() - 1;
+        }
+
+        constexpr u16 GetIpcLockCount() const {
+            return this->ipc_lock_count;
+        }
+
+        constexpr KMemoryState GetState() const {
+            return this->state;
+        }
+
+        constexpr KMemoryPermission GetPermission() const {
+            return this->perm;
+        }
+
+        constexpr KMemoryPermission GetOriginalPermission() const {
+            return this->original_perm;
+        }
+
+        constexpr KMemoryAttribute GetAttribute() const {
+            return this->attribute;
         }
     };
 
@@ -258,6 +282,22 @@ namespace ams::kern {
                 return this->GetEndAddress() - 1;
             }
 
+            constexpr u16 GetIpcLockCount() const {
+                return this->ipc_lock_count;
+            }
+
+            constexpr KMemoryPermission GetPermission() const {
+                return this->perm;
+            }
+
+            constexpr KMemoryPermission GetOriginalPermission() const {
+                return this->original_perm;
+            }
+
+            constexpr KMemoryAttribute GetAttribute() const {
+                return this->attribute;
+            }
+
             constexpr KMemoryInfo GetMemoryInfo() const {
                 return {
                     .address          = GetInteger(this->GetAddress()),
@@ -297,7 +337,7 @@ namespace ams::kern {
 
             constexpr bool HasProperties(KMemoryState s, KMemoryPermission p, KMemoryAttribute a) const {
                 MESOSPHERE_ASSERT_THIS();
-                constexpr auto AttributeIgnoreMask = KMemoryAttribute_DontCareMask | KMemoryAttribute_IpcLocked | KMemoryAttribute_DeviceShared;
+                constexpr auto AttributeIgnoreMask = KMemoryAttribute_IpcLocked | KMemoryAttribute_DeviceShared;
                 return this->memory_state == s && this->perm == p && (this->attribute | AttributeIgnoreMask) == (a | AttributeIgnoreMask);
             }
 
@@ -353,6 +393,66 @@ namespace ams::kern {
 
                 this->address = addr;
                 this->num_pages -= block->num_pages;
+            }
+
+            constexpr void ShareToDevice(KMemoryPermission new_perm) {
+                /* We must either be shared or have a zero lock count. */
+                MESOSPHERE_ASSERT((this->attribute & KMemoryAttribute_DeviceShared) == KMemoryAttribute_DeviceShared || this->device_use_count == 0);
+
+                /* Share. */
+                const u16 new_count = ++this->device_use_count;
+                MESOSPHERE_ABORT_UNLESS(new_count > 0);
+
+                this->attribute = static_cast<KMemoryAttribute>(this->attribute | KMemoryAttribute_DeviceShared);
+            }
+
+            constexpr void UnshareToDevice(KMemoryPermission new_perm) {
+                /* We must be shared. */
+                MESOSPHERE_ASSERT((this->attribute & KMemoryAttribute_DeviceShared) == KMemoryAttribute_DeviceShared);
+
+                /* Unhare. */
+                const u16 old_count = this->device_use_count--;
+                MESOSPHERE_ABORT_UNLESS(old_count > 0);
+
+                if (old_count == 1) {
+                    this->attribute = static_cast<KMemoryAttribute>(this->attribute & ~KMemoryAttribute_DeviceShared);
+                }
+            }
+
+            constexpr void LockForIpc(KMemoryPermission new_perm) {
+                /* We must either be locked or have a zero lock count. */
+                MESOSPHERE_ASSERT((this->attribute & KMemoryAttribute_IpcLocked) == KMemoryAttribute_IpcLocked || this->ipc_lock_count == 0);
+
+                /* Lock. */
+                const u16 new_lock_count = ++this->ipc_lock_count;
+                MESOSPHERE_ABORT_UNLESS(new_lock_count > 0);
+
+                /* If this is our first lock, update our permissions. */
+                if (new_lock_count == 1) {
+                    MESOSPHERE_ASSERT(this->original_perm == KMemoryPermission_None);
+                    MESOSPHERE_ASSERT((this->perm | new_perm | KMemoryPermission_NotMapped) == (this->perm | KMemoryPermission_NotMapped));
+                    MESOSPHERE_ASSERT((this->perm & KMemoryPermission_UserExecute) != KMemoryPermission_UserExecute || (new_perm == KMemoryPermission_UserRead));
+                    this->original_perm = this->perm;
+                    this->perm          = static_cast<KMemoryPermission>((new_perm & KMemoryPermission_IpcLockChangeMask) | (this->original_perm & ~KMemoryPermission_IpcLockChangeMask));
+                }
+                this->attribute = static_cast<KMemoryAttribute>(this->attribute | KMemoryAttribute_IpcLocked);
+            }
+
+            constexpr void UnlockForIpc(KMemoryPermission new_perm) {
+                /* We must be locked. */
+                MESOSPHERE_ASSERT((this->attribute & KMemoryAttribute_IpcLocked) == KMemoryAttribute_IpcLocked);
+
+                /* Unlock. */
+                const u16 old_lock_count = this->ipc_lock_count--;
+                MESOSPHERE_ABORT_UNLESS(old_lock_count > 0);
+
+                /* If this is our last unlock, update our permissions. */
+                if (old_lock_count == 1) {
+                    MESOSPHERE_ASSERT(this->original_perm != KMemoryPermission_None);
+                    this->perm          = this->original_perm;
+                    this->original_perm = KMemoryPermission_None;
+                    this->attribute = static_cast<KMemoryAttribute>(this->attribute & ~KMemoryAttribute_IpcLocked);
+                }
             }
     };
     static_assert(std::is_trivially_destructible<KMemoryBlock>::value);

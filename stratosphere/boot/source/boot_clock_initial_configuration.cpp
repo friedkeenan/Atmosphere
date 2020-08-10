@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "boot_clock_initial_configuration.hpp"
 #include "boot_pmc_wrapper.hpp"
 #include "boot_registers_pmc.hpp"
@@ -30,7 +31,7 @@ namespace ams::boot {
 
     void SetInitialClockConfiguration() {
         /* Write mask to APBDEV_PMC_PWR_DET, then clear APBDEV_PMC_PWR_DET_VAL. */
-        const u32 mask = hos::GetVersion() >= hos::Version_600 ? InitialClockOutMask6x : InitialClockOutMask1x;
+        const u32 mask = hos::GetVersion() >= hos::Version_6_0_0 ? InitialClockOutMask6x : InitialClockOutMask1x;
         WritePmcRegister(PmcClkOutCntrl, mask, mask);
     }
 

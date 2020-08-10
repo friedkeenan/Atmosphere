@@ -39,6 +39,7 @@ namespace ams::boot2 {
             ncm::SystemProgramId::NvServices,  /* nvservices */
             ncm::SystemProgramId::NvnFlinger,  /* nvnflinger */
             ncm::SystemProgramId::Vi,          /* vi */
+            ncm::SystemProgramId::Pgl,         /* pgl */
             ncm::SystemProgramId::Ns,          /* ns */
             ncm::SystemProgramId::LogManager,  /* lm */
             ncm::SystemProgramId::Ppc,         /* ppc */
@@ -84,6 +85,7 @@ namespace ams::boot2 {
             ncm::SystemProgramId::NvServices,  /* nvservices */
             ncm::SystemProgramId::NvnFlinger,  /* nvnflinger */
             ncm::SystemProgramId::Vi,          /* vi */
+            ncm::SystemProgramId::Pgl,         /* pgl */
             ncm::SystemProgramId::Ns,          /* ns */
             ncm::SystemProgramId::LogManager,  /* lm */
             ncm::SystemProgramId::Ppc,         /* ppc */
@@ -133,19 +135,29 @@ namespace ams::boot2 {
             return c == '\r' || c == '\n';
         }
 
+        inline bool IsAllowedLaunchProgram(const ncm::ProgramLocation &loc) {
+            if (loc.program_id == ncm::SystemProgramId::Pgl) {
+                return hos::GetVersion() >= hos::Version_10_0_0;
+            }
+            return true;
+        }
+
         void LaunchProgram(os::ProcessId *out_process_id, const ncm::ProgramLocation &loc, u32 launch_flags) {
             os::ProcessId process_id = os::InvalidProcessId;
 
-            /* Launch, lightly validate result. */
-            {
-                const auto launch_result = pm::shell::LaunchProgram(&process_id, loc, launch_flags);
-                AMS_ABORT_UNLESS(!(svc::ResultOutOfResource::Includes(launch_result)));
-                AMS_ABORT_UNLESS(!(svc::ResultOutOfMemory::Includes(launch_result)));
-                AMS_ABORT_UNLESS(!(svc::ResultLimitReached::Includes(launch_result)));
-            }
+            /* Only launch the process if we're allowed to. */
+            if (IsAllowedLaunchProgram(loc)) {
+                /* Launch, lightly validate result. */
+                {
+                    const auto launch_result = pm::shell::LaunchProgram(&process_id, loc, launch_flags);
+                    AMS_ABORT_UNLESS(!(svc::ResultOutOfResource::Includes(launch_result)));
+                    AMS_ABORT_UNLESS(!(svc::ResultOutOfMemory::Includes(launch_result)));
+                    AMS_ABORT_UNLESS(!(svc::ResultLimitReached::Includes(launch_result)));
+                }
 
-            if (out_process_id) {
-                *out_process_id = process_id;
+                if (out_process_id) {
+                    *out_process_id = process_id;
+                }
             }
         }
 
@@ -171,14 +183,16 @@ namespace ams::boot2 {
             return R_SUCCEEDED(gpioPadGetValue(&button, &val)) && val == GpioValue_Low;
         }
 
+        bool IsForceMaintenance() {
+            u8 force_maintenance = 1;
+            settings::fwdbg::GetSettingsItemValue(&force_maintenance, sizeof(force_maintenance), "boot", "force_maintenance");
+            return force_maintenance != 0;
+        }
+
         bool IsMaintenanceMode() {
             /* Contact set:sys, retrieve boot!force_maintenance. */
-            {
-                u8 force_maintenance = 1;
-                settings::fwdbg::GetSettingsItemValue(&force_maintenance, sizeof(force_maintenance), "boot", "force_maintenance");
-                if (force_maintenance != 0) {
-                    return true;
-                }
+            if (IsForceMaintenance()) {
+                return true;
             }
 
             /* Contact GPIO, read plus/minus buttons. */
@@ -301,14 +315,45 @@ namespace ams::boot2 {
         R_ABORT_UNLESS(sm::mitm::WaitMitm(sm::ServiceName::Encode("fsp-srv")));
 
         /* Launch programs required to mount the SD card. */
-        LaunchList(PreSdCardLaunchPrograms, NumPreSdCardLaunchPrograms);
+        /* psc, bus, pcv (and usb on newer firmwares) is the minimal set of required programs. */
+        /* bus depends on pcie, and pcv depends on settings. */
+        {
+            /* Launch psc. */
+            LaunchProgram(nullptr, ncm::ProgramLocation::Make(ncm::SystemProgramId::Psc, ncm::StorageId::BuiltInSystem), 0);
+
+            /* Launch pcie. */
+            LaunchProgram(nullptr, ncm::ProgramLocation::Make(ncm::SystemProgramId::Pcie, ncm::StorageId::BuiltInSystem), 0);
+
+            /* Launch bus. */
+            LaunchProgram(nullptr, ncm::ProgramLocation::Make(ncm::SystemProgramId::Bus, ncm::StorageId::BuiltInSystem), 0);
+
+            /* Launch settings. */
+            LaunchProgram(nullptr, ncm::ProgramLocation::Make(ncm::SystemProgramId::Settings, ncm::StorageId::BuiltInSystem), 0);
+
+            /* NOTE: Here we work around a race condition in the boot process by ensuring that settings initializes its db. */
+            {
+                /* Connect to set:sys. */
+                sm::ScopedServiceHolder<::setsysInitialize, ::setsysExit> setsys_holder;
+                AMS_ABORT_UNLESS(setsys_holder);
+
+                /* Retrieve setting from the database. */
+                u8 force_maintenance = 0;
+                settings::fwdbg::GetSettingsItemValue(&force_maintenance, sizeof(force_maintenance), "boot", "force_maintenance");
+            }
+
+            /* Launch pcv. */
+            LaunchProgram(nullptr, ncm::ProgramLocation::Make(ncm::SystemProgramId::Pcv, ncm::StorageId::BuiltInSystem), 0);
+
+            /* Launch usb. */
+            LaunchProgram(nullptr, ncm::ProgramLocation::Make(ncm::SystemProgramId::Usb, ncm::StorageId::BuiltInSystem), 0);
+        }
 
         /* Wait for the SD card required services to be ready. */
         cfg::WaitSdCardRequiredServicesReady();
 
         /* Wait for other atmosphere mitm modules to initialize. */
         R_ABORT_UNLESS(sm::mitm::WaitMitm(sm::ServiceName::Encode("set:sys")));
-        if (hos::GetVersion() >= hos::Version_200) {
+        if (hos::GetVersion() >= hos::Version_2_0_0) {
             R_ABORT_UNLESS(sm::mitm::WaitMitm(sm::ServiceName::Encode("bpc")));
         } else {
             R_ABORT_UNLESS(sm::mitm::WaitMitm(sm::ServiceName::Encode("bpc:c")));
@@ -337,7 +382,7 @@ namespace ams::boot2 {
         if (maintenance) {
             LaunchList(AdditionalMaintenanceLaunchPrograms, NumAdditionalMaintenanceLaunchPrograms);
             /* Starting in 7.0.0, npns is launched during maintenance boot. */
-            if (hos::GetVersion() >= hos::Version_700) {
+            if (hos::GetVersion() >= hos::Version_7_0_0) {
                 LaunchProgram(nullptr, ncm::ProgramLocation::Make(ncm::SystemProgramId::Npns, ncm::StorageId::BuiltInSystem), 0);
             }
         } else {

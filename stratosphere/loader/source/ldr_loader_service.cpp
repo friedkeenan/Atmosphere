@@ -13,8 +13,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "ldr_arguments.hpp"
 #include "ldr_content_management.hpp"
+#include "ldr_development_manager.hpp"
 #include "ldr_process_creation.hpp"
 #include "ldr_launch_record.hpp"
 #include "ldr_loader_service.hpp"
@@ -93,6 +95,11 @@ namespace ams::ldr {
     Result LoaderService::GetProcessModuleInfo(sf::Out<u32> count, const sf::OutPointerArray<ModuleInfo> &out, os::ProcessId process_id) {
         R_UNLESS(out.GetSize() <= std::numeric_limits<s32>::max(), ResultInvalidSize());
         return ldr::ro::GetProcessModuleInfo(count.GetPointer(), out.GetPointer(), out.GetSize(), process_id);
+    }
+
+    Result LoaderService::SetEnabledProgramVerification(bool enabled) {
+        ldr::SetEnabledProgramVerification(enabled);
+        return ResultSuccess();
     }
 
     /* Atmosphere commands. */

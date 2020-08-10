@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "dmnt_service.hpp"
 
 namespace std {
@@ -40,10 +41,10 @@ namespace ams::dmnt {
 
         /* Nintendo uses actual pointers as file handles. We'll add a layer of indirection... */
         bool g_sd_initialized = false;
-        os::Mutex g_sd_lock;
+        os::Mutex g_sd_lock(false);
         FsFileSystem g_sd_fs;
 
-        os::Mutex g_file_handle_lock;
+        os::Mutex g_file_handle_lock(false);
         u64 g_cur_fd;
         std::unordered_map<TargetIOFileHandle, FsFile> g_file_handles;
 

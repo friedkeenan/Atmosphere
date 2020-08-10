@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "sm_service_manager.hpp"
 
 namespace ams::sm::impl {
@@ -479,7 +480,7 @@ namespace ams::sm::impl {
         /* that will never register. Thus, in the interest of not breaking every single piece of homebrew */
         /* we will provide a little first class help. */
         constexpr ServiceName ApmP = ServiceName::Encode("apm:p");
-        R_UNLESS((hos::GetVersion() < hos::Version_800) || (service != ApmP), sm::ResultNotAllowed());
+        R_UNLESS((hos::GetVersion() < hos::Version_8_0_0) || (service != ApmP), sm::ResultNotAllowed());
 
         /* Check that the process is registered and allowed to get the service. */
         if (!IsInitialProcess(process_id)) {

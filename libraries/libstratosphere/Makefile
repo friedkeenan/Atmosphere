@@ -15,7 +15,9 @@ include $(DEVKITPRO)/libnx/switch_rules
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
-DEFINES	    := $(ATMOSPHERE_DEFINES) -DATMOSPHERE_IS_STRATOSPHERE
+PRECOMPILED_HEADERS := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))/include/stratosphere.hpp
+
+DEFINES	    := $(ATMOSPHERE_DEFINES) -DATMOSPHERE_IS_STRATOSPHERE -D_GNU_SOURCE
 SETTINGS    := $(ATMOSPHERE_SETTINGS) -O2
 CFLAGS      := $(ATMOSPHERE_CFLAGS) $(SETTINGS) $(DEFINES) $(INCLUDE)
 CXXFLAGS    := $(CFLAGS) $(ATMOSPHERE_CXXFLAGS) -flto
@@ -40,7 +42,7 @@ LIBDIRS	:= $(PORTLIBS) $(LIBNX) $(ATMOSPHERE_LIBRARIES_DIR)/libvapours
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 #---------------------------------------------------------------------------------
 
-export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
+export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) $(CURDIR)/include \
 			$(foreach dir,$(DATA),$(CURDIR)/$(dir))
 
 CFILES      :=	$(foreach dir,$(SOURCES),$(filter-out $(notdir $(wildcard $(dir)/*.arch.*.c)) $(notdir $(wildcard $(dir)/*.board.*.c)) $(notdir $(wildcard $(dir)/*.os.*.c)), \
@@ -77,6 +79,7 @@ endif
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES))
 export OFILES_SRC	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
+export GCH_FILES    :=	$(foreach hdr,$(PRECOMPILED_HEADERS:.hpp=.gch),$(notdir $(hdr)))
 export OFILES 	:=	$(OFILES_BIN) $(OFILES_SRC)
 export HFILES_BIN	:=	$(addsuffix .h,$(subst .,_,$(BINFILES)))
 
@@ -113,17 +116,19 @@ dist: dist-src dist-bin
 #---------------------------------------------------------------------------------
 clean:
 	@echo clean ...
-	@rm -fr release lib *.bz2
+	@rm -fr release lib *.bz2 include/stratosphere.hpp.gch
 
 #---------------------------------------------------------------------------------
 else
 
-DEPENDS	:=	$(OFILES:.o=.d)
+DEPENDS	:=	$(OFILES:.o=.d) $(GCH_FILES:.gch=.d)
 
 #---------------------------------------------------------------------------------
 # main targets
 #---------------------------------------------------------------------------------
 $(OUTPUT)	:	$(OFILES)
+
+$(OFILES)	:	$(GCH_FILES)
 
 $(OFILES_SRC)	: $(HFILES_BIN)
 

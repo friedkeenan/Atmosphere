@@ -47,7 +47,7 @@ namespace ams::sf::hipc {
             using ServerDomainSessionManager::DomainEntryStorage;
             using ServerDomainSessionManager::DomainStorage;
         private:
-            class ServerBase : public os::WaitableHolder {
+            class ServerBase : public os::WaitableHolderType {
                 friend class ServerManagerBase;
                 template<size_t, typename, size_t>
                 friend class ServerManager;
@@ -60,21 +60,21 @@ namespace ams::sf::hipc {
                     bool service_managed;
                 public:
                     ServerBase(Handle ph, sm::ServiceName sn, bool m, cmif::ServiceObjectHolder &&sh) :
-                        os::WaitableHolder(ph), static_object(std::move(sh)), port_handle(ph), service_name(sn), service_managed(m)
+                        static_object(std::move(sh)), port_handle(ph), service_name(sn), service_managed(m)
                     {
-                        /* ... */
+                        hipc::AttachWaitableHolderForAccept(this, ph);
                     }
 
                     virtual ~ServerBase() = 0;
                     virtual void CreateSessionObjectHolder(cmif::ServiceObjectHolder *out_obj, std::shared_ptr<::Service> *out_fsrv) const = 0;
             };
 
-            template<typename ServiceImpl, auto MakeShared = std::make_shared<ServiceImpl>>
+            template<typename Interface, auto MakeShared>
             class Server : public ServerBase {
                 NON_COPYABLE(Server);
                 NON_MOVEABLE(Server);
                 private:
-                    static constexpr bool IsMitmServer = ServiceObjectTraits<ServiceImpl>::IsMitmServiceObject;
+                    static constexpr bool IsMitmServer = sf::IsMitmServiceObject<Interface>;
                 public:
                     Server(Handle ph, sm::ServiceName sn, bool m, cmif::ServiceObjectHolder &&sh) : ServerBase(ph, sn, m, std::forward<cmif::ServiceObjectHolder>(sh)) {
                         /* ... */
@@ -87,7 +87,7 @@ namespace ams::sf::hipc {
                             } else {
                                 R_ABORT_UNLESS(sm::UnregisterService(this->service_name));
                             }
-                            R_ABORT_UNLESS(svcCloseHandle(this->port_handle));
+                            R_ABORT_UNLESS(svc::CloseHandle(this->port_handle));
                         }
                     }
 
@@ -118,54 +118,54 @@ namespace ams::sf::hipc {
             };
         private:
             /* Management of waitables. */
-            os::WaitableManager waitable_manager;
+            os::WaitableManagerType waitable_manager;
             os::Event request_stop_event;
-            os::WaitableHolder request_stop_event_holder;
+            os::WaitableHolderType request_stop_event_holder;
             os::Event notify_event;
-            os::WaitableHolder notify_event_holder;
+            os::WaitableHolderType notify_event_holder;
 
             os::Mutex waitable_selection_mutex;
 
             os::Mutex waitlist_mutex;
-            os::WaitableManager waitlist;
+            os::WaitableManagerType waitlist;
 
             os::Mutex deferred_session_mutex;
             using DeferredSessionList = typename util::IntrusiveListMemberTraits<&ServerSession::deferred_list_node>::ListType;
             DeferredSessionList deferred_session_list;
         private:
             virtual void RegisterSessionToWaitList(ServerSession *session) override final;
-            void RegisterToWaitList(os::WaitableHolder *holder);
+            void RegisterToWaitList(os::WaitableHolderType *holder);
             void ProcessWaitList();
 
             bool WaitAndProcessImpl();
 
-            Result ProcessForServer(os::WaitableHolder *holder);
-            Result ProcessForMitmServer(os::WaitableHolder *holder);
-            Result ProcessForSession(os::WaitableHolder *holder);
+            Result ProcessForServer(os::WaitableHolderType *holder);
+            Result ProcessForMitmServer(os::WaitableHolderType *holder);
+            Result ProcessForSession(os::WaitableHolderType *holder);
 
             void   ProcessDeferredSessions();
 
-            template<typename ServiceImpl, auto MakeShared = std::make_shared<ServiceImpl>>
+            template<typename Interface, auto MakeShared>
             void RegisterServerImpl(Handle port_handle, sm::ServiceName service_name, bool managed, cmif::ServiceObjectHolder &&static_holder) {
                 /* Allocate server memory. */
                 auto *server = this->AllocateServer();
                 AMS_ABORT_UNLESS(server != nullptr);
-                new (server) Server<ServiceImpl, MakeShared>(port_handle, service_name, managed, std::forward<cmif::ServiceObjectHolder>(static_holder));
+                new (server) Server<Interface, MakeShared>(port_handle, service_name, managed, std::forward<cmif::ServiceObjectHolder>(static_holder));
 
-                if constexpr (!ServiceObjectTraits<ServiceImpl>::IsMitmServiceObject) {
+                if constexpr (!sf::IsMitmServiceObject<Interface>) {
                     /* Non-mitm server. */
-                    server->SetUserData(static_cast<uintptr_t>(UserDataTag::Server));
+                    os::SetWaitableHolderUserData(server, static_cast<uintptr_t>(UserDataTag::Server));
                 } else {
                     /* Mitm server. */
-                    server->SetUserData(static_cast<uintptr_t>(UserDataTag::MitmServer));
+                    os::SetWaitableHolderUserData(server, static_cast<uintptr_t>(UserDataTag::MitmServer));
                 }
 
-                this->waitable_manager.LinkWaitableHolder(server);
+                os::LinkWaitableHolder(std::addressof(this->waitable_manager), server);
             }
 
-            template<typename ServiceImpl>
-            static constexpr inline std::shared_ptr<ServiceImpl> MakeSharedMitm(std::shared_ptr<::Service> &&s, const sm::MitmProcessInfo &client_info) {
-                return std::make_shared<ServiceImpl>(std::forward<std::shared_ptr<::Service>>(s), client_info);
+            template<typename Interface, typename ServiceImpl>
+            static constexpr inline std::shared_ptr<Interface> MakeSharedMitm(std::shared_ptr<::Service> &&s, const sm::MitmProcessInfo &client_info) {
+                return sf::MakeShared<Interface, ServiceImpl>(std::forward<std::shared_ptr<::Service>>(s), client_info);
             }
 
             Result InstallMitmServerImpl(Handle *out_port_handle, sm::ServiceName service_name, MitmQueryFunction query_func);
@@ -175,29 +175,30 @@ namespace ams::sf::hipc {
         public:
             ServerManagerBase(DomainEntryStorage *entry_storage, size_t entry_count) :
                 ServerDomainSessionManager(entry_storage, entry_count),
-                request_stop_event(false), request_stop_event_holder(&request_stop_event),
-                notify_event(false), notify_event_holder(&notify_event)
+                request_stop_event(os::EventClearMode_ManualClear), notify_event(os::EventClearMode_ManualClear),
+                waitable_selection_mutex(false), waitlist_mutex(false), deferred_session_mutex(false)
             {
                 /* Link waitables. */
-                this->waitable_manager.LinkWaitableHolder(&this->request_stop_event_holder);
-                this->waitable_manager.LinkWaitableHolder(&this->notify_event_holder);
+                os::InitializeWaitableManager(std::addressof(this->waitable_manager));
+                os::InitializeWaitableHolder(std::addressof(this->request_stop_event_holder), this->request_stop_event.GetBase());
+                os::LinkWaitableHolder(std::addressof(this->waitable_manager), std::addressof(this->request_stop_event_holder));
+                os::InitializeWaitableHolder(std::addressof(this->notify_event_holder), this->notify_event.GetBase());
+                os::LinkWaitableHolder(std::addressof(this->waitable_manager), std::addressof(this->notify_event_holder));
+                os::InitializeWaitableManager(std::addressof(this->waitlist));
             }
 
-            template<typename ServiceImpl, auto MakeShared = std::make_shared<ServiceImpl>>
-            void RegisterServer(Handle port_handle, std::shared_ptr<ServiceImpl> static_object = nullptr) {
-                static_assert(!ServiceObjectTraits<ServiceImpl>::IsMitmServiceObject, "RegisterServer requires non-mitm object. Use RegisterMitmServer instead.");
+            template<typename Interface, typename ServiceImpl, auto MakeShared = sf::MakeShared<Interface, ServiceImpl>> requires (sf::IsServiceObject<Interface> && !sf::IsMitmServiceObject<Interface>)
+            void RegisterServer(Handle port_handle, std::shared_ptr<Interface> static_object = nullptr) {
                 /* Register server. */
                 cmif::ServiceObjectHolder static_holder;
                 if (static_object != nullptr) {
                     static_holder = cmif::ServiceObjectHolder(std::move(static_object));
                 }
-                this->RegisterServerImpl<ServiceImpl, MakeShared>(port_handle, sm::InvalidServiceName, false, std::move(static_holder));
+                this->RegisterServerImpl<Interface, MakeShared>(port_handle, sm::InvalidServiceName, false, std::move(static_holder));
             }
 
-            template<typename ServiceImpl, auto MakeShared = std::make_shared<ServiceImpl>>
-            Result RegisterServer(sm::ServiceName service_name, size_t max_sessions, std::shared_ptr<ServiceImpl> static_object = nullptr) {
-                static_assert(!ServiceObjectTraits<ServiceImpl>::IsMitmServiceObject, "RegisterServer requires non-mitm object. Use RegisterMitmServer instead.");
-
+            template<typename Interface, typename ServiceImpl, auto MakeShared = sf::MakeShared<Interface, ServiceImpl>> requires (sf::IsServiceObject<Interface> && !sf::IsMitmServiceObject<Interface>)
+            Result RegisterServer(sm::ServiceName service_name, size_t max_sessions, std::shared_ptr<Interface> static_object = nullptr) {
                 /* Register service. */
                 Handle port_handle;
                 R_TRY(sm::RegisterService(&port_handle, service_name, max_sessions, false));
@@ -207,30 +208,29 @@ namespace ams::sf::hipc {
                 if (static_object != nullptr) {
                     static_holder = cmif::ServiceObjectHolder(std::move(static_object));
                 }
-                this->RegisterServerImpl<ServiceImpl, MakeShared>(port_handle, service_name, true, std::move(static_holder));
+                this->RegisterServerImpl<Interface, MakeShared>(port_handle, service_name, true, std::move(static_holder));
                 return ResultSuccess();
             }
 
-            template<typename ServiceImpl, auto MakeShared = MakeSharedMitm<ServiceImpl>>
+            template<typename Interface, typename ServiceImpl, auto MakeShared = MakeSharedMitm<Interface, ServiceImpl>>
+                requires (sf::IsMitmServiceObject<Interface> && sf::IsMitmServiceImpl<ServiceImpl>)
             Result RegisterMitmServer(sm::ServiceName service_name) {
-                static_assert(ServiceObjectTraits<ServiceImpl>::IsMitmServiceObject, "RegisterMitmServer requires mitm object. Use RegisterServer instead.");
-
                 /* Install mitm service. */
                 Handle port_handle;
                 R_TRY(this->InstallMitmServerImpl(&port_handle, service_name, &ServiceImpl::ShouldMitm));
 
-                this->RegisterServerImpl<ServiceImpl, MakeShared>(port_handle, service_name, true, cmif::ServiceObjectHolder());
+                this->RegisterServerImpl<Interface, MakeShared>(port_handle, service_name, true, cmif::ServiceObjectHolder());
                 return ResultSuccess();
             }
 
             /* Processing. */
-            os::WaitableHolder *WaitSignaled();
+            os::WaitableHolderType *WaitSignaled();
 
             void   ResumeProcessing();
             void   RequestStopProcessing();
-            void   AddUserWaitableHolder(os::WaitableHolder *waitable);
+            void   AddUserWaitableHolder(os::WaitableHolderType *waitable);
 
-            Result Process(os::WaitableHolder *waitable);
+            Result Process(os::WaitableHolderType *waitable);
             void   WaitAndProcess();
             void   LoopProcess();
     };
@@ -356,7 +356,7 @@ namespace ams::sf::hipc {
                 return this->GetObjectBySessionIndex(session, this->saved_messages_start, hipc::TlsMessageBufferSize);
             }
         public:
-            ServerManager() : ServerManagerBase(this->domain_entry_storages, ManagerOptions::MaxDomainObjects) {
+            ServerManager() : ServerManagerBase(this->domain_entry_storages, ManagerOptions::MaxDomainObjects), resource_mutex(false) {
                 /* Clear storages. */
                 #define SF_SM_MEMCLEAR(obj) if constexpr (sizeof(obj) > 0) { std::memset(obj, 0, sizeof(obj)); }
                 SF_SM_MEMCLEAR(this->server_storages);

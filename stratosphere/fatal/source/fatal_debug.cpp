@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "fatal_debug.hpp"
 #include "fatal_config.hpp"
 
@@ -177,17 +178,17 @@ namespace ams::fatal::srv {
         /* First things first, check if process is 64 bits, and get list of thread infos. */
         std::unordered_map<u64, u64> thread_id_to_tls;
         {
-            bool got_attach_process = false;
+            bool got_create_process = false;
             svc::DebugEventInfo d;
             while (R_SUCCEEDED(svcGetDebugEvent(reinterpret_cast<u8 *>(&d), debug_handle.Get()))) {
                 switch (d.type) {
-                    case svc::DebugEvent_AttachProcess:
-                        ctx->cpu_ctx.architecture = (d.info.attach_process.flags & 1) ? CpuContext::Architecture_Aarch64 : CpuContext::Architecture_Aarch32;
-                        std::memcpy(ctx->proc_name, d.info.attach_process.name, sizeof(d.info.attach_process.name));
-                        got_attach_process = true;
+                    case svc::DebugEvent_CreateProcess:
+                        ctx->cpu_ctx.architecture = (d.info.create_process.flags & 1) ? CpuContext::Architecture_Aarch64 : CpuContext::Architecture_Aarch32;
+                        std::memcpy(ctx->proc_name, d.info.create_process.name, sizeof(d.info.create_process.name));
+                        got_create_process = true;
                         break;
-                    case svc::DebugEvent_AttachThread:
-                        thread_id_to_tls[d.info.attach_thread.thread_id] = d.info.attach_thread.tls_address;
+                    case svc::DebugEvent_CreateThread:
+                        thread_id_to_tls[d.info.create_thread.thread_id] = d.info.create_thread.tls_address;
                         break;
                     case svc::DebugEvent_Exception:
                     case svc::DebugEvent_ExitProcess:
@@ -196,7 +197,7 @@ namespace ams::fatal::srv {
                 }
             }
 
-            if (!got_attach_process) {
+            if (!got_create_process) {
                 return;
             }
         }
@@ -213,14 +214,14 @@ namespace ams::fatal::srv {
         ThreadContext thread_ctx;
         {
             /* We start by trying to get a list of threads. */
-            u32 thread_count;
+            s32 thread_count;
             u64 thread_ids[0x60];
-            if (R_FAILED(svcGetThreadList(&thread_count, thread_ids, 0x60, debug_handle.Get()))) {
+            if (R_FAILED(svc::GetThreadList(&thread_count, thread_ids, 0x60, debug_handle.Get()))) {
                 return;
             }
 
             /* We need to locate the thread that's called fatal. */
-            for (u32 i = 0; i < thread_count; i++) {
+            for (s32 i = 0; i < thread_count; i++) {
                 const u64 cur_thread_id = thread_ids[i];
                 if (thread_id_to_tls.find(cur_thread_id) == thread_id_to_tls.end()) {
                     continue;

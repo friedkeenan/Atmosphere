@@ -13,7 +13,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 #include <stratosphere.hpp>
 
 namespace ams::cfg {
@@ -30,7 +29,7 @@ namespace ams::cfg {
         constexpr size_t NumRequiredServicesForSdCardAccess = util::size(RequiredServicesForSdCardAccess);
 
         /* SD card globals. */
-        os::Mutex g_sd_card_lock;
+        os::Mutex g_sd_card_lock(false);
         bool g_sd_card_initialized = false;
         FsFileSystem g_sd_card_filesystem = {};
 

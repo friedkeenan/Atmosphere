@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "../amsmitm_initialization.hpp"
 #include "nsmitm_module.hpp"
 #include "ns_am_mitm_service.hpp"
@@ -37,10 +38,10 @@ namespace ams::mitm::ns {
         mitm::WaitInitialized();
 
         /* Create mitm servers. */
-        if (hos::GetVersion() < hos::Version_300) {
-            R_ABORT_UNLESS(g_server_manager.RegisterMitmServer<NsAmMitmService>(NsAmMitmServiceName));
+        if (hos::GetVersion() < hos::Version_3_0_0) {
+            R_ABORT_UNLESS((g_server_manager.RegisterMitmServer<impl::IAmMitmInterface, NsAmMitmService>(NsAmMitmServiceName)));
         } else {
-            R_ABORT_UNLESS(g_server_manager.RegisterMitmServer<NsWebMitmService>(NsWebMitmServiceName));
+            R_ABORT_UNLESS((g_server_manager.RegisterMitmServer<impl::IWebMitmInterface, NsWebMitmService>(NsWebMitmServiceName)));
         }
 
         /* Loop forever, servicing our services. */

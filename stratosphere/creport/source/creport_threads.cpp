@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "creport_threads.hpp"
 #include "creport_modules.hpp"
 
@@ -246,17 +247,17 @@ namespace ams::creport {
         this->thread_count = 0;
 
         /* Get thread list. */
-        u32 num_threads;
+        s32 num_threads;
         u64 thread_ids[ThreadCountMax];
         {
-            if (R_FAILED(svcGetThreadList(&num_threads, thread_ids, ThreadCountMax, debug_handle))) {
+            if (R_FAILED(svc::GetThreadList(&num_threads, thread_ids, ThreadCountMax, debug_handle))) {
                 return;
             }
             num_threads = std::min(size_t(num_threads), ThreadCountMax);
         }
 
         /* Parse thread infos. */
-        for (size_t i = 0; i < num_threads; i++) {
+        for (s32 i = 0; i < num_threads; i++) {
             if (this->threads[this->thread_count].ReadFromProcess(debug_handle, tls_map, thread_ids[i], is_64_bit)) {
                 this->thread_count++;
             }

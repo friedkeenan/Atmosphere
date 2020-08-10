@@ -121,6 +121,8 @@ $(filter-out kern_svc_tables.o, $(OFILES))	:	$(GCH_FILES)
 
 $(OFILES_SRC)	: $(HFILES_BIN)
 
+kern_libc_generic.o: CFLAGS += -fno-builtin
+
 #---------------------------------------------------------------------------------
 %_bin.h %.bin.o	:	%.bin
 #---------------------------------------------------------------------------------

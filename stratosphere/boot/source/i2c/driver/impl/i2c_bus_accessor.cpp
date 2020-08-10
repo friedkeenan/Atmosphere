@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "i2c_pcv.hpp"
 #include "i2c_bus_accessor.hpp"
 
@@ -52,7 +53,7 @@ namespace ams::i2c::driver::impl {
         }
 
         /* Close interrupt event. */
-        this->interrupt_event.Finalize();
+        os::FinalizeInterruptEvent(std::addressof(this->interrupt_event));
 
         /* Close PCV. */
         pcv::Finalize();
@@ -152,10 +153,10 @@ namespace ams::i2c::driver::impl {
                 break;
             }
 
-            this->interrupt_event.Reset();
-            if (!this->interrupt_event.TimedWait(InterruptTimeout)) {
+            os::ClearInterruptEvent(std::addressof(this->interrupt_event));
+            if (!os::TimedWaitInterruptEvent(std::addressof(this->interrupt_event), InterruptTimeout)) {
                 this->HandleTransactionResult(i2c::ResultBusBusy());
-                this->interrupt_event.Reset();
+                os::ClearInterruptEvent(std::addressof(this->interrupt_event));
                 return i2c::ResultTimedOut();
             }
 
@@ -175,10 +176,10 @@ namespace ams::i2c::driver::impl {
                 break;
             }
 
-            this->interrupt_event.Reset();
-            if (!this->interrupt_event.TimedWait(InterruptTimeout)) {
+            os::ClearInterruptEvent(std::addressof(this->interrupt_event));
+            if (!os::TimedWaitInterruptEvent(std::addressof(this->interrupt_event), InterruptTimeout)) {
                 this->HandleTransactionResult(i2c::ResultBusBusy());
-                this->interrupt_event.Reset();
+                os::ClearInterruptEvent(std::addressof(this->interrupt_event));
                 return i2c::ResultTimedOut();
             }
         }
@@ -200,11 +201,11 @@ namespace ams::i2c::driver::impl {
 
         /* Receive bytes. */
         while (remaining > 0) {
-            this->interrupt_event.Reset();
-            if (!this->interrupt_event.TimedWait(InterruptTimeout)) {
+            os::ClearInterruptEvent(std::addressof(this->interrupt_event));
+            if (!os::TimedWaitInterruptEvent(std::addressof(this->interrupt_event), InterruptTimeout)) {
                 this->HandleTransactionResult(i2c::ResultBusBusy());
                 this->ClearInterruptMask();
-                this->interrupt_event.Reset();
+                os::ClearInterruptEvent(std::addressof(this->interrupt_event));
                 return i2c::ResultTimedOut();
             }
 
@@ -241,7 +242,8 @@ namespace ams::i2c::driver::impl {
         };
         const auto index = ConvertToIndex(bus);
         AMS_ABORT_UNLESS(index < util::size(s_interrupts));
-        R_ABORT_UNLESS(this->interrupt_event.Initialize(s_interrupts[index], false));
+        os::InitializeInterruptEvent(std::addressof(this->interrupt_event), s_interrupts[index], os::EventClearMode_ManualClear);
+        os::ClearInterruptEvent(std::addressof(this->interrupt_event));
     }
 
     void BusAccessor::SetClock(SpeedMode speed_mode) {
@@ -423,7 +425,7 @@ namespace ams::i2c::driver::impl {
 
         this->HandleTransactionResult(transaction_result);
         this->ClearInterruptMask();
-        this->interrupt_event.Reset();
+        os::ClearInterruptEvent(std::addressof(this->interrupt_event));
         return transaction_result;
     }
 

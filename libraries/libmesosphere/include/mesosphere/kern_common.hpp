@@ -20,6 +20,8 @@ namespace ams::kern {
 
     constexpr size_t PageSize = 4_KB;
 
+    ams::TargetFirmware GetTargetFirmware();
+
 }
 
 #if 1 || defined(AMS_BUILD_FOR_AUDITING)

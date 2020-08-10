@@ -21,33 +21,18 @@
 
 namespace ams::exosphere {
 
-    #define AMS_DEFINE_TARGET_FIRMWARE_ENUM(n) TargetFirmware_##n = ATMOSPHERE_TARGET_FIRMWARE_##n
-    enum TargetFirmware : u32 {
-        AMS_DEFINE_TARGET_FIRMWARE_ENUM(100),
-        AMS_DEFINE_TARGET_FIRMWARE_ENUM(200),
-        AMS_DEFINE_TARGET_FIRMWARE_ENUM(300),
-        AMS_DEFINE_TARGET_FIRMWARE_ENUM(400),
-        AMS_DEFINE_TARGET_FIRMWARE_ENUM(500),
-        AMS_DEFINE_TARGET_FIRMWARE_ENUM(600),
-        AMS_DEFINE_TARGET_FIRMWARE_ENUM(620),
-        AMS_DEFINE_TARGET_FIRMWARE_ENUM(700),
-        AMS_DEFINE_TARGET_FIRMWARE_ENUM(800),
-        AMS_DEFINE_TARGET_FIRMWARE_ENUM(810),
-        AMS_DEFINE_TARGET_FIRMWARE_ENUM(900),
-        AMS_DEFINE_TARGET_FIRMWARE_ENUM(910),
-    };
-    #undef AMS_DEFINE_TARGET_FIRMWARE_ENUM
+    using TargetFirmware = ams::TargetFirmware;
 
     constexpr ALWAYS_INLINE u32 GetVersion(u32 major, u32 minor, u32 micro) {
         return (major << 16) | (minor << 8) | (micro);
     }
 
     struct ApiInfo {
-        using MasterKeyRevision     = util::BitPack64::Field<0,                           8, u32>;
-        using TargetFirmwareVersion = util::BitPack64::Field<MasterKeyRevision::Next,     8, TargetFirmware>;
-        using MicroVersion          = util::BitPack64::Field<TargetFirmwareVersion::Next, 8, u32>;
-        using MinorVersion          = util::BitPack64::Field<MicroVersion::Next,          8, u32>;
-        using MajorVersion          = util::BitPack64::Field<MinorVersion::Next,          8, u32>;
+        using TargetFirmwareVersion = util::BitPack64::Field<0,                           32, TargetFirmware>;
+        using MasterKeyRevision     = util::BitPack64::Field<TargetFirmwareVersion::Next,  8, u32>;
+        using MicroVersion          = util::BitPack64::Field<MasterKeyRevision::Next,      8, u32>;
+        using MinorVersion          = util::BitPack64::Field<MicroVersion::Next,           8, u32>;
+        using MajorVersion          = util::BitPack64::Field<MinorVersion::Next,           8, u32>;
 
         util::BitPack64 value;
 
@@ -88,6 +73,7 @@ namespace ams {
         static constexpr uintptr_t StdAbortMagicAddress = 0x8;
         static constexpr u64       StdAbortMagicValue = 0xA55AF00DDEADCAFEul;
         static constexpr u32       StdAbortErrorDesc = 0xFFE;
+        static constexpr u32       StackOverflowErrorDesc = 0xFFD;
         static constexpr u32       DataAbortErrorDesc = 0x101;
         static constexpr u32       Magic = util::FourCC<'A', 'F', 'E', '2'>::Code;
 
@@ -119,7 +105,7 @@ namespace ams {
     };
 
     static_assert(sizeof(FatalErrorContext) == 0x450, "sizeof(FatalErrorContext)");
-    static_assert(std::is_pod<FatalErrorContext>::value, "FatalErrorContext");
+    static_assert(util::is_pod<FatalErrorContext>::value, "FatalErrorContext");
 
 #ifdef ATMOSPHERE_GIT_BRANCH
     NX_CONSTEXPR const char *GetGitBranch() {

@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "creport_crash_report.hpp"
 #include "creport_utils.hpp"
 
@@ -68,7 +69,7 @@ void __libnx_initheap(void) {
 }
 
 void __appInit(void) {
-    hos::SetVersionForLibnx();
+    hos::InitializeForStratosphere();
 
     sm::DoWithSession([&]() {
         R_ABORT_UNLESS(fsInitialize());
@@ -85,6 +86,10 @@ void __appExit(void) {
 static creport::CrashReport g_crash_report;
 
 int main(int argc, char **argv) {
+    /* Set thread name. */
+    os::SetThreadNamePointer(os::GetCurrentThread(), AMS_GET_SYSTEM_THREAD_NAME(creport, Main));
+    AMS_ASSERT(os::GetThreadPriority(os::GetCurrentThread()) == AMS_GET_SYSTEM_THREAD_PRIORITY(creport, Main));
+
     /* Validate arguments. */
     if (argc < 2) {
         return EXIT_FAILURE;
@@ -98,6 +103,9 @@ int main(int argc, char **argv) {
     /* Parse crashed PID. */
     os::ProcessId crashed_pid = creport::ParseProcessIdArgument(argv[0]);
 
+    /* Initialize the crash report. */
+    g_crash_report.Initialize();
+
     /* Try to debug the crashed process. */
     g_crash_report.BuildReport(crashed_pid, argv[1][0] == '1');
     if (!g_crash_report.IsComplete()) {
@@ -108,7 +116,14 @@ int main(int argc, char **argv) {
     g_crash_report.SaveReport();
 
     /* Try to terminate the process. */
-    {
+    if (hos::GetVersion() >= hos::Version_10_0_0) {
+        /* On 10.0.0+, use pgl to terminate. */
+        sm::ScopedServiceHolder<pgl::Initialize, pgl::Finalize> pgl_holder;
+        if (pgl_holder) {
+            pgl::TerminateProcess(crashed_pid);
+        }
+    } else {
+        /* On < 10.0.0, use ns:dev to terminate. */
         sm::ScopedServiceHolder<nsdevInitialize, nsdevExit> ns_holder;
         if (ns_holder) {
             nsdevTerminateProcess(static_cast<u64>(crashed_pid));
@@ -116,7 +131,7 @@ int main(int argc, char **argv) {
     }
 
     /* Don't fatal if we have extra info, or if we're 5.0.0+ and an application crashed. */
-    if (hos::GetVersion() >= hos::Version_500) {
+    if (hos::GetVersion() >= hos::Version_5_0_0) {
         if (g_crash_report.IsApplication()) {
             return EXIT_SUCCESS;
         }

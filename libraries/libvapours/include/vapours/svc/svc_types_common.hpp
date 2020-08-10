@@ -60,6 +60,8 @@ namespace ams::svc {
             T pointer;
         public:
             constexpr ALWAYS_INLINE UserPointer(T p) : pointer(p) { /* ... */ }
+
+            constexpr ALWAYS_INLINE T GetPointerUnsafe() { return this->pointer; }
     };
 
     template<typename T>
@@ -114,8 +116,18 @@ namespace ams::svc {
         MemoryAttribute_Uncached     = (1 << 3),
     };
 
+    constexpr inline size_t HeapSizeAlignment = 2_MB;
+
     struct PageInfo {
         u32 flags;
+    };
+
+    enum MemoryRegionType {
+        MemoryRegionType_None              = 0,
+        MemoryRegionType_KernelTraceBuffer = 1,
+        MemoryRegionType_OnMemoryBootImage = 2,
+        MemoryRegionType_DTB               = 3,
+        MemoryRegionType_Count,
     };
 
     /* Info Types. */
@@ -168,15 +180,15 @@ namespace ams::svc {
         InitialProcessIdRangeInfo_Maximum = 1,
     };
 
-    enum PhysicalMemoryInfo : u64 {
-        PhysicalMemoryInfo_Application  = 0,
-        PhysicalMemoryInfo_Applet       = 1,
-        PhysicalMemoryInfo_System       = 2,
-        PhysicalMemoryInfo_SystemUnsafe = 3,
+    enum PhysicalMemorySystemInfo : u64 {
+        PhysicalMemorySystemInfo_Application  = 0,
+        PhysicalMemorySystemInfo_Applet       = 1,
+        PhysicalMemorySystemInfo_System       = 2,
+        PhysicalMemorySystemInfo_SystemUnsafe = 3,
     };
 
     enum LastThreadInfoFlag : u32 {
-        /* TODO */
+        LastThreadInfoFlag_ThreadInSystemCall = (1u << 0),
     };
 
     enum LimitableResource : u32 {
@@ -190,10 +202,10 @@ namespace ams::svc {
     };
 
     enum CodeMemoryOperation : u32 {
-        CodeMemoryOperation_MapOwner   = 0,
-        CodeMemoryOperation_MapSlave   = 1,
-        CodeMemoryOperation_UnmapOwner = 2,
-        CodeMemoryOperation_UnmapSlave = 3,
+        CodeMemoryOperation_Map            = 0,
+        CodeMemoryOperation_MapToOwner     = 1,
+        CodeMemoryOperation_Unmap          = 2,
+        CodeMemoryOperation_UnmapFromOwner = 3,
     };
 
     /* Synchronization types. */
@@ -223,7 +235,7 @@ namespace ams::svc {
     /* Thread types. */
     using ThreadFunc = ams::svc::Address;
 
-#ifdef ATMOSPHERE_ARCH_ARM64
+#if defined(ATMOSPHERE_ARCH_ARM64)
 
     struct ThreadContext {
         u64  r[29];
@@ -240,8 +252,23 @@ namespace ams::svc {
     };
     static_assert(sizeof(ThreadContext) == 0x320);
 
+#elif defined(ATMOSPHERE_ARCH_ARM)
+
+    struct ThreadContext {
+        u32 r[13];
+        u32 sp;
+        u32 lr;
+        u32 pc;
+        u32 cpsr;
+        u32 padding;
+        u64 fpu_registers[32];
+        u32 fpscr;
+        u32 fpexc;
+        u32 tpidr;
+    };
+
 #else
-    #error >Unknown Architecture for ams::svc::ThreadContext>
+    #error "Unknown Architecture for ams::svc::ThreadContext"
 #endif
 
     enum ThreadSuspend : u32 {
@@ -265,6 +292,15 @@ namespace ams::svc {
         ThreadContextFlag_All = (ThreadContextFlag_General | ThreadContextFlag_Control | ThreadContextFlag_Fpu | ThreadContextFlag_FpuControl),
     };
 
+    enum ContinueFlag : u32 {
+        ContinueFlag_ExceptionHandled     = (1u << 0),
+        ContinueFlag_EnableExceptionEvent = (1u << 1),
+        ContinueFlag_ContinueAll          = (1u << 2),
+        ContinueFlag_ContinueOthers       = (1u << 3),
+
+        ContinueFlag_AllMask              = (1u << 4) - 1,
+    };
+
     enum ThreadExitReason : u32 {
         ThreadExitReason_ExitThread       = 0,
         ThreadExitReason_TerminateThread  = 1,
@@ -277,8 +313,14 @@ namespace ams::svc {
         ThreadActivity_Paused   = 1,
     };
 
-    constexpr s32 LowestThreadPriority  = 63;
-    constexpr s32 HighestThreadPriority = 0;
+    constexpr inline s32 IdealCoreDontCare        = -1;
+    constexpr inline s32 IdealCoreUseProcessValue = -2;
+    constexpr inline s32 IdealCoreNoUpdate        = -3;
+
+    constexpr inline s32 LowestThreadPriority  = 63;
+    constexpr inline s32 HighestThreadPriority = 0;
+
+    constexpr inline s32 SystemThreadPriorityHighest = 16;
 
     /* Process types. */
     enum ProcessInfoType : u32 {
@@ -341,12 +383,21 @@ namespace ams::svc {
 
         /* 7.x+ Should memory allocation be optimized? This requires IsApplication. */
         CreateProcessFlag_OptimizeMemoryAllocation = (1 << 11),
+
+        /* Mask of all flags. */
+        CreateProcessFlag_All = CreateProcessFlag_Is64Bit                  |
+                                CreateProcessFlag_AddressSpaceMask         |
+                                CreateProcessFlag_EnableDebug              |
+                                CreateProcessFlag_EnableAslr               |
+                                CreateProcessFlag_IsApplication            |
+                                CreateProcessFlag_PoolPartitionMask        |
+                                CreateProcessFlag_OptimizeMemoryAllocation,
     };
 
     /* Debug types. */
     enum DebugEvent : u32 {
-        DebugEvent_AttachProcess = 0,
-        DebugEvent_AttachThread  = 1,
+        DebugEvent_CreateProcess = 0,
+        DebugEvent_CreateThread  = 1,
         DebugEvent_ExitProcess   = 2,
         DebugEvent_ExitThread    = 3,
         DebugEvent_Exception     = 4,
@@ -373,6 +424,10 @@ namespace ams::svc {
         DebugException_MemorySystemError    = 9,
     };
 
+    enum DebugEventFlag : u32 {
+        DebugEventFlag_Stopped = (1u << 0),
+    };
+
     enum ExceptionType : u32 {
         ExceptionType_Init                 = 0x000,
         ExceptionType_InstructionAbort     = 0x100,
@@ -390,7 +445,16 @@ namespace ams::svc {
     };
 
     enum BreakReason : u32 {
-        /* TODO */
+        BreakReason_Panic         = 0,
+        BreakReason_Assert        = 1,
+        BreakReason_User          = 2,
+        BreakReason_PreLoadDll    = 3,
+        BreakReason_PostLoadDll   = 4,
+        BreakReason_PreUnloadDll  = 5,
+        BreakReason_PostUnloadDll = 6,
+        BreakReason_CppException  = 7,
+
+        BreakReason_NotificationOnlyFlag = 0x80000000,
     };
 
     enum KernelDebugType : u32 {
@@ -484,6 +548,7 @@ namespace ams::svc {
         struct ExceptionInfoStatus64 {
             u32 pstate;
             u32 afsr0;
+            u32 afsr1;
             u32 esr;
             u32 far;
         };

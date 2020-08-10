@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "pm_boot_mode_service.hpp"
 #include "pm_debug_monitor_service.hpp"
 #include "pm_info_service.hpp"
@@ -93,8 +94,8 @@ namespace {
         svc::DebugEventInfo d;
         while (true) {
             R_ABORT_UNLESS(svcGetDebugEvent(reinterpret_cast<u8 *>(&d), debug_handle.Get()));
-            if (d.type == svc::DebugEvent_AttachProcess) {
-                return ncm::ProgramId{d.info.attach_process.program_id};
+            if (d.type == svc::DebugEvent_CreateProcess) {
+                return ncm::ProgramId{d.info.create_process.program_id};
             }
         }
     }
@@ -115,10 +116,10 @@ namespace {
         cfg::GetInitialProcessRange(&min_priv_process_id, &max_priv_process_id);
 
         /* Get list of processes, register all privileged ones. */
-        u32 num_pids;
+        s32 num_pids;
         os::ProcessId pids[ProcessCountMax];
-        R_ABORT_UNLESS(svcGetProcessList(&num_pids, reinterpret_cast<u64 *>(pids), ProcessCountMax));
-        for (size_t i = 0; i < num_pids; i++) {
+        R_ABORT_UNLESS(svc::GetProcessList(&num_pids, reinterpret_cast<u64 *>(pids), ProcessCountMax));
+        for (s32 i = 0; i < num_pids; i++) {
             if (min_priv_process_id <= pids[i] && pids[i] <= max_priv_process_id) {
                 RegisterPrivilegedProcess(pids[i]);
             }
@@ -128,7 +129,7 @@ namespace {
 }
 
 void __appInit(void) {
-    hos::SetVersionForLibnx();
+    hos::InitializeForStratosphere();
 
     sm::DoWithSession([&]() {
         R_ABORT_UNLESS(fsprInitialize());
@@ -142,7 +143,7 @@ void __appInit(void) {
         R_ABORT_UNLESS(sm::manager::EndInitialDefers());
 
         R_ABORT_UNLESS(ldrPmInitialize());
-        R_ABORT_UNLESS(splInitialize());
+        spl::Initialize();
     });
 
     ams::CheckApiVersion();
@@ -150,7 +151,7 @@ void __appInit(void) {
 
 void __appExit(void) {
     /* Cleanup services. */
-    splExit();
+    spl::Finalize();
     ldrPmExit();
     smManagerExit();
     fsprExit();
@@ -184,21 +185,25 @@ namespace {
 
 int main(int argc, char **argv)
 {
+    /* Set thread name. */
+    os::SetThreadNamePointer(os::GetCurrentThread(), AMS_GET_SYSTEM_THREAD_NAME(pm, Main));
+    AMS_ASSERT(os::GetThreadPriority(os::GetCurrentThread()) == AMS_GET_SYSTEM_THREAD_PRIORITY(pm, Main));
+
     /* Initialize process manager implementation. */
     R_ABORT_UNLESS(pm::impl::InitializeProcessManager());
 
     /* Create Services. */
     /* NOTE: Extra sessions have been added to pm:bm and pm:info to facilitate access by the rest of stratosphere. */
     /* Also Note: PM was rewritten in 5.0.0, so the shell and dmnt services are different before/after. */
-    if (hos::GetVersion() >= hos::Version_500) {
-        R_ABORT_UNLESS((g_server_manager.RegisterServer<pm::shell::ShellService>(ShellServiceName, ShellMaxSessions)));
-        R_ABORT_UNLESS((g_server_manager.RegisterServer<pm::dmnt::DebugMonitorService>(DebugMonitorServiceName, DebugMonitorMaxSessions)));
+    if (hos::GetVersion() >= hos::Version_5_0_0) {
+        R_ABORT_UNLESS((g_server_manager.RegisterServer<pm::impl::IShellInterface, pm::ShellService>(ShellServiceName, ShellMaxSessions)));
+        R_ABORT_UNLESS((g_server_manager.RegisterServer<pm::impl::IDebugMonitorInterface, pm::DebugMonitorService>(DebugMonitorServiceName, DebugMonitorMaxSessions)));
     } else {
-        R_ABORT_UNLESS((g_server_manager.RegisterServer<pm::shell::ShellServiceDeprecated>(ShellServiceName, ShellMaxSessions)));
-        R_ABORT_UNLESS((g_server_manager.RegisterServer<pm::dmnt::DebugMonitorServiceDeprecated>(DebugMonitorServiceName, DebugMonitorMaxSessions)));
+        R_ABORT_UNLESS((g_server_manager.RegisterServer<pm::impl::IDeprecatedShellInterface, pm::ShellService>(ShellServiceName, ShellMaxSessions)));
+        R_ABORT_UNLESS((g_server_manager.RegisterServer<pm::impl::IDeprecatedDebugMonitorInterface, pm::DebugMonitorService>(DebugMonitorServiceName, DebugMonitorMaxSessions)));
     }
-    R_ABORT_UNLESS((g_server_manager.RegisterServer<pm::bm::BootModeService>(BootModeServiceName, BootModeMaxSessions)));
-    R_ABORT_UNLESS((g_server_manager.RegisterServer<pm::info::InformationService>(InformationServiceName, InformationMaxSessions)));
+    R_ABORT_UNLESS((g_server_manager.RegisterServer<pm::impl::IBootModeInterface, pm::BootModeService>(BootModeServiceName, BootModeMaxSessions)));
+    R_ABORT_UNLESS((g_server_manager.RegisterServer<pm::impl::IInformationInterface, pm::InformationService>(InformationServiceName, InformationMaxSessions)));
 
     /* Loop forever, servicing our services. */
     g_server_manager.LoopProcess();

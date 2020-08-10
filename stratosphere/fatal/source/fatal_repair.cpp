@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "fatal_repair.hpp"
 #include "fatal_service_for_self.hpp"
 
@@ -22,7 +23,7 @@ namespace ams::fatal::srv {
 
         bool IsInRepair() {
             /* Before firmware 3.0.0, this wasn't implemented. */
-            if (hos::GetVersion() < hos::Version_300) {
+            if (hos::GetVersion() < hos::Version_3_0_0) {
                 return false;
             }
 
@@ -44,16 +45,16 @@ namespace ams::fatal::srv {
                 gpioPadSetDirection(&vol_btn, GpioDirection_Input);
 
                 /* Ensure that we're holding the volume button for a full second. */
-                os::TimeoutHelper timeout_helper(1'000'000'000ul);
-                while (!timeout_helper.TimedOut()) {
+                auto start = os::GetSystemTick();
+                do {
                     GpioValue val;
                     if (R_FAILED(gpioPadGetValue(&vol_btn, &val)) || val != GpioValue_Low) {
                         return true;
                     }
 
                     /* Sleep for 100 ms. */
-                    svcSleepThread(100'000'000ul);
-                }
+                    os::SleepThread(TimeSpan::FromMilliSeconds(100));
+                } while (os::ConvertToTimeSpan(os::GetSystemTick() - start) < TimeSpan::FromSeconds(1));
             }
 
             return false;
@@ -61,7 +62,7 @@ namespace ams::fatal::srv {
 
         bool NeedsRunTimeReviser() {
             /* Before firmware 5.0.0, this wasn't implemented. */
-            if (hos::GetVersion() < hos::Version_500) {
+            if (hos::GetVersion() < hos::Version_5_0_0) {
                 return false;
             }
 

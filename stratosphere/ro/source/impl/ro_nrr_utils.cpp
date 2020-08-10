@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stratosphere.hpp>
 #include "ro_nrr_utils.hpp"
 #include "ro_service_impl.hpp"
 
@@ -110,7 +111,7 @@ namespace ams::ro::impl {
         /* Helper functions. */
 
         Result GetCertificationModulus(const u8 **out, u32 key_generation) {
-            if (hos::GetVersion() >= hos::Version_910) {
+            if (hos::GetVersion() >= hos::Version_9_1_0) {
                 R_UNLESS(key_generation <= KeyGenerationMax910, ro::ResultNotAuthorized());
             } else {
                 R_UNLESS(key_generation <= KeyGenerationMax100, ro::ResultNotAuthorized());
@@ -182,7 +183,7 @@ namespace ams::ro::impl {
                 R_UNLESS(header->GetProgramId() == program_id, ResultInvalidNrr());
 
                 /* Check type. */
-                if (hos::GetVersion() >= hos::Version_700 && enforce_type) {
+                if (hos::GetVersion() >= hos::Version_7_0_0 && enforce_type) {
                     R_UNLESS(header->GetType() == expected_type, ResultInvalidNrrType());
                 }
             }
