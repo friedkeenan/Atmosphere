@@ -15,12 +15,13 @@
  */
 
 #pragma once
-#include "sf_common.hpp"
-#include "sf_out.hpp"
+#include <stratosphere/sf/sf_common.hpp>
+#include <stratosphere/sf/sf_out.hpp>
+#include <stratosphere/sf/sf_shared_object.hpp>
 
 namespace ams::sf {
 
-    class IServiceObject {
+    class IServiceObject : public ISharedObject {
         public:
             virtual ~IServiceObject() { /* ... */ }
     };
@@ -49,27 +50,5 @@ namespace ams::sf {
         { T(std::forward<std::shared_ptr<::Service>>(s), c) };
         { T::ShouldMitm(c) } -> std::same_as<bool>;
     };
-
-    template<typename Interface, typename Impl, typename... Arguments>
-        requires std::constructible_from<Impl, Arguments...>
-    constexpr ALWAYS_INLINE std::shared_ptr<typename Interface::ImplHolder<Impl>> MakeShared(Arguments &&... args) {
-        return std::make_shared<typename Interface::ImplHolder<Impl>>(std::forward<Arguments>(args)...);
-    }
-
-    template<typename Interface, typename Impl, typename... Arguments>
-        requires (std::constructible_from<Impl, Arguments...> && std::derived_from<Impl, std::enable_shared_from_this<Impl>>)
-    constexpr ALWAYS_INLINE std::shared_ptr<typename Interface::ImplSharedPointer<Impl>> MakeShared(Arguments &&... args) {
-        return std::make_shared<typename Interface::ImplSharedPointer<Impl>>(std::make_shared<Impl>(std::forward<Arguments>(args)...));
-    }
-
-    template<typename Interface, typename Impl>
-    constexpr ALWAYS_INLINE std::shared_ptr<typename Interface::ImplPointer<Impl>> GetSharedPointerTo(Impl *impl) {
-        return std::make_shared<typename Interface::ImplPointer<Impl>>(impl);
-    }
-
-    template<typename Interface, typename Impl>
-    constexpr ALWAYS_INLINE std::shared_ptr<typename Interface::ImplPointer<Impl>> GetSharedPointerTo(Impl &impl) {
-        return GetSharedPointerTo<Interface, Impl>(std::addressof(impl));
-    }
 
 }

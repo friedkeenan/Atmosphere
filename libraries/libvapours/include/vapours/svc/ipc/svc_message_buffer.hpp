@@ -19,6 +19,9 @@
 
 namespace ams::svc::ipc {
 
+    #pragma GCC push_options
+    #pragma GCC optimize ("-O3")
+
     ALWAYS_INLINE u32 *GetMessageBuffer() {
         return GetThreadLocalRegion()->message_buffer;
     }
@@ -372,8 +375,8 @@ namespace ams::svc::ipc {
             u32 *buffer;
             size_t size;
         public:
-            constexpr MessageBuffer(u32 *b, size_t sz) : buffer(b), size(sz) { /* ... */ }
-            constexpr explicit MessageBuffer(u32 *b) : buffer(b), size(sizeof(::ams::svc::ThreadLocalRegion::message_buffer)) { /* ... */ }
+            constexpr ALWAYS_INLINE MessageBuffer(u32 *b, size_t sz) : buffer(b), size(sz) { /* ... */ }
+            constexpr explicit ALWAYS_INLINE MessageBuffer(u32 *b) : buffer(b), size(sizeof(::ams::svc::ThreadLocalRegion::message_buffer)) { /* ... */ }
 
             constexpr ALWAYS_INLINE size_t GetBufferSize() const {
                 return this->size;
@@ -498,6 +501,7 @@ namespace ams::svc::ipc {
             }
 
             static constexpr ALWAYS_INLINE s32 GetSpecialDataIndex(const MessageHeader &hdr, const SpecialHeader &spc) {
+                AMS_UNUSED(hdr);
                 return (MessageHeader::GetDataSize() / sizeof(util::BitPack32)) + (spc.GetHeaderSize() / sizeof(util::BitPack32));
             }
 
@@ -543,5 +547,7 @@ namespace ams::svc::ipc {
                 return msg_size;
             }
     };
+
+    #pragma GCC pop_options
 
 }

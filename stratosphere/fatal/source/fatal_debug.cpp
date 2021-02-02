@@ -28,6 +28,41 @@ namespace ams::fatal::srv {
             u64 lr;
         };
 
+        constexpr inline size_t MaxThreads = 0x60;
+
+        template<size_t MaxThreadCount>
+        class ThreadTlsMapImpl {
+            private:
+                std::pair<u64, u64> m_map[MaxThreadCount];
+                size_t m_index;
+            public:
+                constexpr ThreadTlsMapImpl() : m_map(), m_index(0) { /* ... */ }
+
+                constexpr void ResetThreadTlsMap() {
+                    m_index = 0;
+                }
+
+                constexpr void SetThreadTls(u64 thread_id, u64 tls) {
+                    if (m_index < util::size(m_map)) {
+                        m_map[m_index++] = std::make_pair(thread_id, tls);
+                    }
+                }
+
+                constexpr bool GetThreadTls(u64 *out, u64 thread_id) const {
+                    for (size_t i = 0; i < m_index; ++i) {
+                        if (m_map[i].first == thread_id) {
+                            *out = m_map[i].second;
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+        };
+
+        using ThreadTlsMap = ThreadTlsMapImpl<MaxThreads>;
+
+        constinit ThreadTlsMap g_thread_id_to_tls_map;
+
         bool IsThreadFatalCaller(Result result, u32 debug_handle, u64 thread_id, u64 thread_tls_addr, ThreadContext *thread_ctx) {
             /* Verify that the thread is running or waiting. */
             {
@@ -170,17 +205,18 @@ namespace ams::fatal::srv {
 
     void TryCollectDebugInformation(ThrowContext *ctx, os::ProcessId process_id) {
         /* Try to debug the process. This may fail, if we called into ourself. */
-        os::ManagedHandle debug_handle;
-        if (R_FAILED(svcDebugActiveProcess(debug_handle.GetPointer(), static_cast<u64>(process_id)))) {
+        Handle debug_handle;
+        if (R_FAILED(svcDebugActiveProcess(std::addressof(debug_handle), static_cast<u64>(process_id)))) {
             return;
         }
+        ON_SCOPE_EXIT { R_ABORT_UNLESS(svc::CloseHandle(debug_handle)); };
 
         /* First things first, check if process is 64 bits, and get list of thread infos. */
-        std::unordered_map<u64, u64> thread_id_to_tls;
+        g_thread_id_to_tls_map.ResetThreadTlsMap();
         {
             bool got_create_process = false;
             svc::DebugEventInfo d;
-            while (R_SUCCEEDED(svcGetDebugEvent(reinterpret_cast<u8 *>(&d), debug_handle.Get()))) {
+            while (R_SUCCEEDED(svcGetDebugEvent(reinterpret_cast<u8 *>(&d), debug_handle))) {
                 switch (d.type) {
                     case svc::DebugEvent_CreateProcess:
                         ctx->cpu_ctx.architecture = (d.info.create_process.flags & 1) ? CpuContext::Architecture_Aarch64 : CpuContext::Architecture_Aarch32;
@@ -188,7 +224,7 @@ namespace ams::fatal::srv {
                         got_create_process = true;
                         break;
                     case svc::DebugEvent_CreateThread:
-                        thread_id_to_tls[d.info.create_thread.thread_id] = d.info.create_thread.tls_address;
+                        g_thread_id_to_tls_map.SetThreadTls(d.info.create_thread.thread_id, d.info.create_thread.tls_address);
                         break;
                     case svc::DebugEvent_Exception:
                     case svc::DebugEvent_ExitProcess:
@@ -216,20 +252,21 @@ namespace ams::fatal::srv {
             /* We start by trying to get a list of threads. */
             s32 thread_count;
             u64 thread_ids[0x60];
-            if (R_FAILED(svc::GetThreadList(&thread_count, thread_ids, 0x60, debug_handle.Get()))) {
+            if (R_FAILED(svc::GetThreadList(&thread_count, thread_ids, 0x60, debug_handle))) {
                 return;
             }
 
             /* We need to locate the thread that's called fatal. */
             for (s32 i = 0; i < thread_count; i++) {
                 const u64 cur_thread_id = thread_ids[i];
-                if (thread_id_to_tls.find(cur_thread_id) == thread_id_to_tls.end()) {
+                u64 cur_thread_tls;
+                if (!g_thread_id_to_tls_map.GetThreadTls(std::addressof(cur_thread_tls), cur_thread_id)) {
                     continue;
                 }
 
-                if (IsThreadFatalCaller(ctx->result, debug_handle.Get(), cur_thread_id, thread_id_to_tls[cur_thread_id], &thread_ctx)) {
-                    thread_id = cur_thread_id;
-                    thread_tls = thread_id_to_tls[thread_id];
+                if (IsThreadFatalCaller(ctx->result, debug_handle, cur_thread_id, cur_thread_tls, &thread_ctx)) {
+                    thread_id  = cur_thread_id;
+                    thread_tls = cur_thread_tls;
                     found_fatal_caller = true;
                     break;
                 }
@@ -238,7 +275,7 @@ namespace ams::fatal::srv {
                 return;
             }
         }
-        if (R_FAILED(svcGetDebugThreadContext(&thread_ctx, debug_handle.Get(), thread_id, svc::ThreadContextFlag_All))) {
+        if (R_FAILED(svcGetDebugThreadContext(&thread_ctx, debug_handle, thread_id, svc::ThreadContextFlag_All))) {
             return;
         }
 
@@ -259,7 +296,7 @@ namespace ams::fatal::srv {
 
             /* Read a new frame. */
             StackFrame cur_frame = {};
-            if (R_FAILED(svcReadDebugProcessMemory(&cur_frame, debug_handle.Get(), cur_fp, sizeof(StackFrame)))) {
+            if (R_FAILED(svcReadDebugProcessMemory(&cur_frame, debug_handle, cur_fp, sizeof(StackFrame)))) {
                 break;
             }
 
@@ -271,7 +308,7 @@ namespace ams::fatal::srv {
         /* Try to read up to 0x100 of stack. */
         ctx->stack_dump_base = 0;
         for (size_t sz = 0x100; sz > 0; sz -= 0x10) {
-            if (R_SUCCEEDED(svcReadDebugProcessMemory(ctx->stack_dump, debug_handle.Get(), thread_ctx.sp, sz))) {
+            if (R_SUCCEEDED(svcReadDebugProcessMemory(ctx->stack_dump, debug_handle, thread_ctx.sp, sz))) {
                 ctx->stack_dump_base = thread_ctx.sp;
                 ctx->stack_dump_size = sz;
                 break;
@@ -279,7 +316,7 @@ namespace ams::fatal::srv {
         }
 
         /* Try to read the first 0x100 of TLS. */
-        if (R_SUCCEEDED(svcReadDebugProcessMemory(ctx->tls_dump, debug_handle.Get(), thread_tls, sizeof(ctx->tls_dump)))) {
+        if (R_SUCCEEDED(svcReadDebugProcessMemory(ctx->tls_dump, debug_handle, thread_tls, sizeof(ctx->tls_dump)))) {
             ctx->tls_address = thread_tls;
         } else {
             ctx->tls_address = 0;
@@ -287,7 +324,7 @@ namespace ams::fatal::srv {
         }
 
         /* Parse the base address. */
-        ctx->cpu_ctx.aarch64_ctx.SetBaseAddress(GetBaseAddress(ctx, &thread_ctx, debug_handle.Get()));
+        ctx->cpu_ctx.aarch64_ctx.SetBaseAddress(GetBaseAddress(ctx, &thread_ctx, debug_handle));
     }
 
 }

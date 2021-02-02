@@ -27,11 +27,12 @@ namespace ams::kern {
         /* This should be unnecessary for us, because our constructor will clear all fields. */
         /* The following is analagous to what Nintendo's implementation (no constexpr constructor) would do, though. */
         /*
-            this->waiter_count = 0;
-            for (size_t i = 0; i < util::size(this->limit_values); i++) {
-                this->limit_values[i]    = 0;
-                this->current_values[i]  = 0;
-                this->current_hints[i] = 0;
+            m_waiter_count = 0;
+            for (size_t i = 0; i < util::size(m_limit_values); i++) {
+                m_limit_values[i]    = 0;
+                m_current_values[i]  = 0;
+                m_current_hints[i]   = 0;
+                m_peak_values[i]     = 0;
             }
         */
     }
@@ -45,11 +46,11 @@ namespace ams::kern {
 
         s64 value;
         {
-            KScopedLightLock lk(this->lock);
-            value = this->limit_values[which];
+            KScopedLightLock lk(m_lock);
+            value = m_limit_values[which];
             MESOSPHERE_ASSERT(value >= 0);
-            MESOSPHERE_ASSERT(this->current_values[which] <= this->limit_values[which]);
-            MESOSPHERE_ASSERT(this->current_hints[which]  <= this->current_values[which]);
+            MESOSPHERE_ASSERT(m_current_values[which] <= m_limit_values[which]);
+            MESOSPHERE_ASSERT(m_current_hints[which]  <= m_current_values[which]);
         }
 
         return value;
@@ -60,11 +61,26 @@ namespace ams::kern {
 
         s64 value;
         {
-            KScopedLightLock lk(this->lock);
-            value = this->current_values[which];
+            KScopedLightLock lk(m_lock);
+            value = m_current_values[which];
             MESOSPHERE_ASSERT(value >= 0);
-            MESOSPHERE_ASSERT(this->current_values[which] <= this->limit_values[which]);
-            MESOSPHERE_ASSERT(this->current_hints[which]  <= this->current_values[which]);
+            MESOSPHERE_ASSERT(m_current_values[which] <= m_limit_values[which]);
+            MESOSPHERE_ASSERT(m_current_hints[which]  <= m_current_values[which]);
+        }
+
+        return value;
+    }
+
+    s64 KResourceLimit::GetPeakValue(ams::svc::LimitableResource which) const {
+        MESOSPHERE_ASSERT_THIS();
+
+        s64 value;
+        {
+            KScopedLightLock lk(m_lock);
+            value = m_peak_values[which];
+            MESOSPHERE_ASSERT(value >= 0);
+            MESOSPHERE_ASSERT(m_current_values[which] <= m_limit_values[which]);
+            MESOSPHERE_ASSERT(m_current_hints[which]  <= m_current_values[which]);
         }
 
         return value;
@@ -75,11 +91,11 @@ namespace ams::kern {
 
         s64 value;
         {
-            KScopedLightLock lk(this->lock);
-            MESOSPHERE_ASSERT(this->current_values[which] >= 0);
-            MESOSPHERE_ASSERT(this->current_values[which] <= this->limit_values[which]);
-            MESOSPHERE_ASSERT(this->current_hints[which]  <= this->current_values[which]);
-            value = this->limit_values[which] - this->current_values[which];
+            KScopedLightLock lk(m_lock);
+            MESOSPHERE_ASSERT(m_current_values[which] >= 0);
+            MESOSPHERE_ASSERT(m_current_values[which] <= m_limit_values[which]);
+            MESOSPHERE_ASSERT(m_current_hints[which]  <= m_current_values[which]);
+            value = m_limit_values[which] - m_current_values[which];
         }
 
         return value;
@@ -88,10 +104,10 @@ namespace ams::kern {
     Result KResourceLimit::SetLimitValue(ams::svc::LimitableResource which, s64 value) {
         MESOSPHERE_ASSERT_THIS();
 
-        KScopedLightLock lk(this->lock);
-        R_UNLESS(this->current_values[which] <= value, svc::ResultInvalidState());
+        KScopedLightLock lk(m_lock);
+        R_UNLESS(m_current_values[which] <= value, svc::ResultInvalidState());
 
-        this->limit_values[which] = value;
+        m_limit_values[which] = value;
 
         return ResultSuccess();
     }
@@ -104,33 +120,34 @@ namespace ams::kern {
         MESOSPHERE_ASSERT_THIS();
         MESOSPHERE_ASSERT(value >= 0);
 
-        KScopedLightLock lk(this->lock);
+        KScopedLightLock lk(m_lock);
 
-        MESOSPHERE_ASSERT(this->current_hints[which] <= this->current_values[which]);
-        if (this->current_hints[which] >= this->limit_values[which]) {
+        MESOSPHERE_ASSERT(m_current_hints[which] <= m_current_values[which]);
+        if (m_current_hints[which] >= m_limit_values[which]) {
             return false;
         }
 
         /* Loop until we reserve or run out of time. */
         while (true) {
-            MESOSPHERE_ASSERT(this->current_values[which] <= this->limit_values[which]);
-            MESOSPHERE_ASSERT(this->current_hints[which]  <= this->current_values[which]);
+            MESOSPHERE_ASSERT(m_current_values[which] <= m_limit_values[which]);
+            MESOSPHERE_ASSERT(m_current_hints[which]  <= m_current_values[which]);
 
             /* If we would overflow, don't allow to succeed. */
-            if (this->current_values[which] + value <= this->current_values[which]) {
+            if (m_current_values[which] + value <= m_current_values[which]) {
                 break;
             }
 
-            if (this->current_values[which] + value <= this->limit_values[which]) {
-                this->current_values[which] += value;
-                this->current_hints[which] += value;
+            if (m_current_values[which] + value <= m_limit_values[which]) {
+                m_current_values[which] += value;
+                m_current_hints[which]  += value;
+                m_peak_values[which]    = std::max(m_peak_values[which], m_current_values[which]);
                 return true;
             }
 
-            if (this->current_hints[which] + value <= this->limit_values[which] && (timeout < 0 || KHardwareTimer::GetTick() < timeout)) {
-                this->waiter_count++;
-                this->cond_var.Wait(&this->lock, timeout);
-                this->waiter_count--;
+            if (m_current_hints[which] + value <= m_limit_values[which] && (timeout < 0 || KHardwareTimer::GetTick() < timeout)) {
+                m_waiter_count++;
+                m_cond_var.Wait(&m_lock, timeout);
+                m_waiter_count--;
             } else {
                 break;
             }
@@ -148,17 +165,17 @@ namespace ams::kern {
         MESOSPHERE_ASSERT(value >= 0);
         MESOSPHERE_ASSERT(hint  >= 0);
 
-        KScopedLightLock lk(this->lock);
-        MESOSPHERE_ASSERT(this->current_values[which] <= this->limit_values[which]);
-        MESOSPHERE_ASSERT(this->current_hints[which]  <= this->current_values[which]);
-        MESOSPHERE_ASSERT(value <= this->current_values[which]);
-        MESOSPHERE_ASSERT(hint  <= this->current_hints[which]);
+        KScopedLightLock lk(m_lock);
+        MESOSPHERE_ASSERT(m_current_values[which] <= m_limit_values[which]);
+        MESOSPHERE_ASSERT(m_current_hints[which]  <= m_current_values[which]);
+        MESOSPHERE_ASSERT(value <= m_current_values[which]);
+        MESOSPHERE_ASSERT(hint  <= m_current_hints[which]);
 
-        this->current_values[which] -= value;
-        this->current_hints[which] -= hint;
+        m_current_values[which] -= value;
+        m_current_hints[which] -= hint;
 
-        if (this->waiter_count != 0) {
-            this->cond_var.Broadcast();
+        if (m_waiter_count != 0) {
+            m_cond_var.Broadcast();
         }
     }
 

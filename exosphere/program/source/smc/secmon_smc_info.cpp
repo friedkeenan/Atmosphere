@@ -15,6 +15,7 @@
  */
 #include <exosphere.hpp>
 #include "../secmon_error.hpp"
+#include "../secmon_map.hpp"
 #include "../secmon_misc.hpp"
 #include "../secmon_page_mapper.hpp"
 #include "../secmon_user_power_management.hpp"
@@ -46,7 +47,7 @@ namespace ams::secmon::smc {
             [fuse::DramId_IcosaSamsung4GB]    = pkg1::MemorySize_4GB,
             [fuse::DramId_IcosaHynix4GB]      = pkg1::MemorySize_4GB,
             [fuse::DramId_IcosaMicron4GB]     = pkg1::MemorySize_4GB,
-            [fuse::DramId_CopperSamsung4GB]   = pkg1::MemorySize_4GB,
+            [fuse::DramId_AulaHynix1y4GB]     = pkg1::MemorySize_4GB,
             [fuse::DramId_IcosaSamsung6GB]    = pkg1::MemorySize_6GB,
             [fuse::DramId_CopperHynix4GB]     = pkg1::MemorySize_4GB,
             [fuse::DramId_CopperMicron4GB]    = pkg1::MemorySize_4GB,
@@ -65,9 +66,13 @@ namespace ams::secmon::smc {
             [fuse::DramId_HoagSamsung1y4GBX]  = pkg1::MemorySize_4GB,
             [fuse::DramId_IowaSamsung1y4GBY]  = pkg1::MemorySize_4GB,
             [fuse::DramId_IowaSamsung1y8GBY]  = pkg1::MemorySize_8GB,
-            [fuse::DramId_IowaSamsung1y4GBA]  = pkg1::MemorySize_4GB,
-            [fuse::DramId_FiveSamsung1y8GBX]  = pkg1::MemorySize_8GB,
-            [fuse::DramId_FiveSamsung1y4GBX]  = pkg1::MemorySize_4GB,
+            [fuse::DramId_AulaSamsung1y4GB]   = pkg1::MemorySize_4GB,
+            [fuse::DramId_HoagSamsung1y8GBX]  = pkg1::MemorySize_8GB,
+            [fuse::DramId_AulaSamsung1y4GBX]  = pkg1::MemorySize_4GB,
+            [fuse::DramId_IowaMicron1y4GB]    = pkg1::MemorySize_4GB,
+            [fuse::DramId_HoagMicron1y4GB]    = pkg1::MemorySize_4GB,
+            [fuse::DramId_AulaMicron1y4GB]    = pkg1::MemorySize_4GB,
+            [fuse::DramId_AulaSamsung1y8GBX]  = pkg1::MemorySize_8GB,
         };
 
         constexpr const pkg1::MemoryMode MemoryModes[] = {
@@ -156,6 +161,8 @@ namespace ams::secmon::smc {
 
             return value.value;
         }
+
+        constinit u64 g_payload_address = 0;
 
         SmcResult GetConfig(SmcArguments &args, bool kern) {
             switch (static_cast<ConfigItem>(args.r[1])) {
@@ -267,6 +274,18 @@ namespace ams::secmon::smc {
                     /* NOTE: This may return values other than 1 in the future. */
                     args.r[1] = (GetEmummcConfiguration().IsEmummcActive() ? 1 : 0);
                     break;
+                case ConfigItem::ExospherePayloadAddress:
+                    /* Gets the physical address of the reboot payload buffer, if one exists. */
+                    if (g_payload_address != 0) {
+                        args.r[1] = g_payload_address;
+                    } else {
+                        return SmcResult::NotInitialized;
+                    }
+                    break;
+                case ConfigItem::ExosphereLogConfiguration:
+                    /* Get the log configuration. */
+                    args.r[1] = (static_cast<u64>(static_cast<u8>(secmon::GetLogPort())) << 32) | static_cast<u64>(secmon::GetLogBaudRate());
+                    break;
                 default:
                     return SmcResult::InvalidArgument;
             }
@@ -293,11 +312,20 @@ namespace ams::secmon::smc {
                             case UserRebootType_ToPayload:
                                 PerformUserRebootToPayload();
                                 break;
+                            case UserRebootType_ToFatalError:
+                                PerformUserRebootToFatalError();
+                                break;
                             default:
                                 return SmcResult::InvalidArgument;
                         }
                     } else /* if (soc_type == fuse::SocType_Mariko) */ {
-                        return SmcResult::NotImplemented;
+                        switch (static_cast<UserRebootType>(args.r[3])) {
+                            case UserRebootType_ToFatalError:
+                                PerformUserRebootToFatalError();
+                                break;
+                            default:
+                                return SmcResult::InvalidArgument;
+                        }
                     }
                     break;
                 case ConfigItem::ExosphereNeedsShutdown:
@@ -307,6 +335,17 @@ namespace ams::secmon::smc {
                         }
                     } else /* if (soc_type == fuse::SocType_Mariko) */ {
                         return SmcResult::NotImplemented;
+                    }
+                    break;
+                case ConfigItem::ExospherePayloadAddress:
+                    if (g_payload_address == 0) {
+                        if (secmon::IsPhysicalMemoryAddress(args.r[2])) {
+                            g_payload_address = args.r[2];
+                        } else {
+                            return SmcResult::InvalidArgument;
+                        }
+                    } else {
+                        return SmcResult::Busy;
                     }
                     break;
                 default:

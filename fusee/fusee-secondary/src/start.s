@@ -30,6 +30,9 @@ _start:
 
 .word (_metadata - _start)
 
+_is_experimental:
+.word 0x00000001 /* is experimental */
+
 _crt0:
     /* Switch to system mode, mask all interrupts, clear all flags */
     msr cpsr_cxsf, #0xDF
@@ -68,6 +71,14 @@ _crt0:
     ldr r1, [r1]
     b   main
 
+.arm
+.global fusee_is_experimental
+.type   fusee_is_experimental, %function
+fusee_is_experimental:
+    ldr r0, =_is_experimental
+    ldr r0, [r0]
+    bx lr
+
 /* Fusee-secondary header. */
 .align 5
 _metadata:
@@ -96,6 +107,7 @@ _metadata:
 #define CONTENT_TYPE_EMC 8
 #define CONTENT_TYPE_KLD 9
 #define CONTENT_TYPE_KRN 10
+#define CONTENT_TYPE_EXF 11
 
 #define CONTENT_FLAG_NONE          (0 << 0)
 
@@ -133,6 +145,17 @@ _content_headers:
 .byte CONTENT_FLAG_NONE
 .word 0xCCCCCCCC
 .asciz "exosphere"
+.align 5
+
+/* mesosphere content header */
+.word __mesosphere_bin_start__
+.word __mesosphere_bin_size__
+.byte CONTENT_TYPE_KRN
+.byte CONTENT_FLAG_NONE
+.byte CONTENT_FLAG_NONE
+.byte CONTENT_FLAG_NONE
+.word 0xCCCCCCCC
+.asciz "mesosphere"
 .align 5
 
 /* fusee_primary content header */
@@ -249,7 +272,7 @@ _content_headers:
 .word __ncm_kip_start__
 .word __ncm_kip_size__
 .byte CONTENT_TYPE_KIP
-.byte CONTENT_FLAG0_EXPERIMENTAL
+.byte CONTENT_FLAG_NONE
 .byte CONTENT_FLAG_NONE
 .byte CONTENT_FLAG_NONE
 .word 0xCCCCCCCC
@@ -267,27 +290,17 @@ _content_headers:
 .asciz "emummc"
 .align 5
 
-/* kernel_ldr content header */
-.word __kernel_ldr_bin_start__
-.word __kernel_ldr_bin_size__
-.byte CONTENT_TYPE_KLD
+/* exosphere mariko fatal program content header */
+.word __mariko_fatal_bin_start__
+.word __mariko_fatal_bin_size__
+.byte CONTENT_TYPE_EXF
 .byte CONTENT_FLAG_NONE
 .byte CONTENT_FLAG_NONE
 .byte CONTENT_FLAG_NONE
 .word 0xCCCCCCCC
-.asciz "kernel_ldr"
+.asciz "exosphere_fatal"
 .align 5
 
-/* splash_screen content header */
-.word __splash_screen_bmp_start__
-.word __splash_screen_bmp_size__
-.byte CONTENT_TYPE_BMP
-.byte CONTENT_FLAG_NONE
-.byte CONTENT_FLAG_NONE
-.byte CONTENT_FLAG_NONE
-.word 0xCCCCCCCC
-.asciz "splash_screen"
-.align 5
 _content_headers_end:
 
 /* No need to include this in normal programs: */

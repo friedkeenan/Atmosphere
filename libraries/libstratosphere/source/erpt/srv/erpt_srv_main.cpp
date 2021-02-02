@@ -24,6 +24,7 @@
 namespace ams::erpt::srv {
 
     lmem::HeapHandle g_heap_handle;
+    ams::sf::ExpHeapAllocator g_sf_allocator;
 
     namespace {
 
@@ -79,6 +80,8 @@ namespace ams::erpt::srv {
 
         R_ABORT_UNLESS(MountSystemSaveData());
 
+        g_sf_allocator.Attach(g_heap_handle);
+
         for (auto i = 0; i < CategoryId_Count; i++) {
             Context *ctx = new Context(static_cast<CategoryId>(i), 1);
             AMS_ABORT_UNLESS(ctx != nullptr);
@@ -99,22 +102,22 @@ namespace ams::erpt::srv {
 
     Result SetProductModel(const char *model, u32 model_len) {
         /* NOTE: Nintendo does not check that this allocation succeeds. */
-        auto *record = new ContextRecord(CategoryId_ProductModelInfo);
+        auto record = std::make_unique<ContextRecord>(CategoryId_ProductModelInfo);
         R_UNLESS(record != nullptr, erpt::ResultOutOfMemory());
 
         R_TRY(record->Add(FieldId_ProductModel, model, model_len));
-        R_TRY(Context::SubmitContextRecord(record));
+        R_TRY(Context::SubmitContextRecord(std::move(record)));
 
         return ResultSuccess();
     }
 
     Result SetRegionSetting(const char *region, u32 region_len) {
         /* NOTE: Nintendo does not check that this allocation succeeds. */
-        auto *record = new ContextRecord(CategoryId_RegionSettingInfo);
+        auto record = std::make_unique<ContextRecord>(CategoryId_RegionSettingInfo);
         R_UNLESS(record != nullptr, erpt::ResultOutOfMemory());
 
         R_TRY(record->Add(FieldId_RegionSetting, region, region_len));
-        R_TRY(Context::SubmitContextRecord(record));
+        R_TRY(Context::SubmitContextRecord(std::move(record)));
 
         return ResultSuccess();
     }

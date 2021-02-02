@@ -28,6 +28,11 @@ static Result _smAtmosphereCmdInServiceNameNoOut(SmServiceName name, Service *sr
     return serviceDispatchIn(srv, cmd_id, name);
 }
 
+static Result _smAtmosphereDetachClient(Service *srv) {
+    u64 pid_placeholder = 0;
+    return serviceDispatchIn(srv, 4, pid_placeholder, .in_send_pid = true);
+}
+
 Result smAtmosphereHasService(bool *out, SmServiceName name) {
     return _smAtmosphereCmdHas(out, name, 65100);
 }
@@ -81,6 +86,10 @@ Result smAtmosphereOpenSession(Service *out) {
 }
 
 void smAtmosphereCloseSession(Service *srv) {
+    Result rc = _smAtmosphereDetachClient(srv);
+    if (R_FAILED(rc)) {
+        svcBreak(BreakReason_Panic, (uintptr_t)&rc, sizeof(rc));
+    }
     serviceClose(srv);
 }
 
@@ -105,6 +114,10 @@ Result smAtmosphereMitmUninstall(SmServiceName name) {
 
 Result smAtmosphereMitmDeclareFuture(SmServiceName name) {
     return _smAtmosphereCmdInServiceNameNoOut(name, smGetServiceSession(), 65006);
+}
+
+Result smAtmosphereMitmClearFuture(SmServiceName name) {
+    return _smAtmosphereCmdInServiceNameNoOut(name, smGetServiceSession(), 65007);
 }
 
 Result smAtmosphereMitmAcknowledgeSession(Service *srv_out, void *_out, SmServiceName name) {

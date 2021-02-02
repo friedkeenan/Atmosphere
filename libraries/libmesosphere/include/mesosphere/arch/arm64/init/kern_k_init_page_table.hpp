@@ -44,16 +44,16 @@ namespace ams::kern::arch::arm64::init {
 
             struct NoClear{};
         private:
-            KPhysicalAddress l1_table;
+            KPhysicalAddress m_l1_table;
         public:
-            constexpr ALWAYS_INLINE KInitialPageTable(KPhysicalAddress l1, NoClear) : l1_table(l1) { /* ... */ }
+            constexpr ALWAYS_INLINE KInitialPageTable(KPhysicalAddress l1, NoClear) : m_l1_table(l1) { /* ... */ }
 
             constexpr ALWAYS_INLINE KInitialPageTable(KPhysicalAddress l1) : KInitialPageTable(l1, NoClear{}) {
-                ClearNewPageTable(this->l1_table);
+                ClearNewPageTable(m_l1_table);
             }
 
             constexpr ALWAYS_INLINE uintptr_t GetL1TableAddress() const {
-                return GetInteger(this->l1_table);
+                return GetInteger(m_l1_table);
             }
         private:
             static constexpr ALWAYS_INLINE L1PageTableEntry *GetL1Entry(KPhysicalAddress _l1_table, KVirtualAddress address) {
@@ -74,12 +74,16 @@ namespace ams::kern::arch::arm64::init {
             static ALWAYS_INLINE void ClearNewPageTable(KPhysicalAddress address) {
                 ClearPhysicalMemory(address, PageSize);
             }
+        public:
+            static consteval size_t GetMaximumOverheadSize(size_t size) {
+                return (util::DivideUp(size, L1BlockSize) + util::DivideUp(size, L2BlockSize)) * PageSize;
+            }
         private:
             size_t NOINLINE GetBlockCount(KVirtualAddress virt_addr, size_t size, size_t block_size) {
                 const KVirtualAddress end_virt_addr = virt_addr + size;
                 size_t count = 0;
                 while (virt_addr < end_virt_addr) {
-                    L1PageTableEntry *l1_entry = GetL1Entry(this->l1_table, virt_addr);
+                    L1PageTableEntry *l1_entry = GetL1Entry(m_l1_table, virt_addr);
 
                     /* If an L1 block is mapped or we're empty, advance by L1BlockSize. */
                     if (l1_entry->IsBlock() || l1_entry->IsEmpty()) {
@@ -133,7 +137,7 @@ namespace ams::kern::arch::arm64::init {
                 const KVirtualAddress end_virt_addr = virt_addr + size;
                 size_t count = 0;
                 while (virt_addr < end_virt_addr) {
-                    L1PageTableEntry *l1_entry = GetL1Entry(this->l1_table, virt_addr);
+                    L1PageTableEntry *l1_entry = GetL1Entry(m_l1_table, virt_addr);
 
                     /* If an L1 block is mapped or we're empty, advance by L1BlockSize. */
                     if (l1_entry->IsBlock() || l1_entry->IsEmpty()) {
@@ -190,7 +194,7 @@ namespace ams::kern::arch::arm64::init {
             }
 
             PageTableEntry *GetMappingEntry(KVirtualAddress virt_addr, size_t block_size) {
-                L1PageTableEntry *l1_entry = GetL1Entry(this->l1_table, virt_addr);
+                L1PageTableEntry *l1_entry = GetL1Entry(m_l1_table, virt_addr);
 
                 if (l1_entry->IsBlock()) {
                     MESOSPHERE_INIT_ABORT_UNLESS(block_size == L1BlockSize);
@@ -297,11 +301,11 @@ namespace ams::kern::arch::arm64::init {
 
                 /* Iteratively map pages until the requested region is mapped. */
                 while (size > 0) {
-                    L1PageTableEntry *l1_entry = GetL1Entry(this->l1_table, virt_addr);
+                    L1PageTableEntry *l1_entry = GetL1Entry(m_l1_table, virt_addr);
 
                     /* Can we make an L1 block? */
                     if (util::IsAligned(GetInteger(virt_addr), L1BlockSize) && util::IsAligned(GetInteger(phys_addr), L1BlockSize) && size >= L1BlockSize) {
-                        *l1_entry = L1PageTableEntry(PageTableEntry::BlockTag{}, phys_addr, attr, false);
+                        *l1_entry = L1PageTableEntry(PageTableEntry::BlockTag{}, phys_addr, attr, PageTableEntry::SoftwareReservedBit_None, false);
                         cpu::DataSynchronizationBarrierInnerShareable();
 
                         virt_addr += L1BlockSize;
@@ -323,7 +327,7 @@ namespace ams::kern::arch::arm64::init {
                     /* Can we make a contiguous L2 block? */
                     if (util::IsAligned(GetInteger(virt_addr), L2ContiguousBlockSize) && util::IsAligned(GetInteger(phys_addr), L2ContiguousBlockSize) && size >= L2ContiguousBlockSize) {
                         for (size_t i = 0; i < L2ContiguousBlockSize / L2BlockSize; i++) {
-                            l2_entry[i] = L2PageTableEntry(PageTableEntry::BlockTag{}, phys_addr, attr, true);
+                            l2_entry[i] = L2PageTableEntry(PageTableEntry::BlockTag{}, phys_addr, attr, PageTableEntry::SoftwareReservedBit_None, true);
                             cpu::DataSynchronizationBarrierInnerShareable();
 
                             virt_addr += L2BlockSize;
@@ -335,7 +339,7 @@ namespace ams::kern::arch::arm64::init {
 
                     /* Can we make an L2 block? */
                     if (util::IsAligned(GetInteger(virt_addr), L2BlockSize) && util::IsAligned(GetInteger(phys_addr), L2BlockSize) && size >= L2BlockSize) {
-                        *l2_entry = L2PageTableEntry(PageTableEntry::BlockTag{}, phys_addr, attr, false);
+                        *l2_entry = L2PageTableEntry(PageTableEntry::BlockTag{}, phys_addr, attr, PageTableEntry::SoftwareReservedBit_None, false);
                         cpu::DataSynchronizationBarrierInnerShareable();
 
                         virt_addr += L2BlockSize;
@@ -357,7 +361,7 @@ namespace ams::kern::arch::arm64::init {
                     /* Can we make a contiguous L3 block? */
                     if (util::IsAligned(GetInteger(virt_addr), L3ContiguousBlockSize) && util::IsAligned(GetInteger(phys_addr), L3ContiguousBlockSize) && size >= L3ContiguousBlockSize) {
                         for (size_t i = 0; i < L3ContiguousBlockSize / L3BlockSize; i++) {
-                            l3_entry[i] = L3PageTableEntry(PageTableEntry::BlockTag{}, phys_addr, attr, true);
+                            l3_entry[i] = L3PageTableEntry(PageTableEntry::BlockTag{}, phys_addr, attr, PageTableEntry::SoftwareReservedBit_None, true);
                             cpu::DataSynchronizationBarrierInnerShareable();
 
                             virt_addr += L3BlockSize;
@@ -368,7 +372,7 @@ namespace ams::kern::arch::arm64::init {
                     }
 
                     /* Make an L3 block. */
-                    *l3_entry = L3PageTableEntry(PageTableEntry::BlockTag{}, phys_addr, attr, false);
+                    *l3_entry = L3PageTableEntry(PageTableEntry::BlockTag{}, phys_addr, attr, PageTableEntry::SoftwareReservedBit_None, false);
                     cpu::DataSynchronizationBarrierInnerShareable();
                     virt_addr += L3BlockSize;
                     phys_addr += L3BlockSize;
@@ -378,7 +382,7 @@ namespace ams::kern::arch::arm64::init {
 
             KPhysicalAddress GetPhysicalAddress(KVirtualAddress virt_addr) const {
                 /* Get the L1 entry. */
-                const L1PageTableEntry *l1_entry = GetL1Entry(this->l1_table, virt_addr);
+                const L1PageTableEntry *l1_entry = GetL1Entry(m_l1_table, virt_addr);
 
                 if (l1_entry->IsBlock()) {
                     return l1_entry->GetBlock() + (GetInteger(virt_addr) & (L1BlockSize - 1));
@@ -440,7 +444,7 @@ namespace ams::kern::arch::arm64::init {
                 };
 
                 while (virt_addr < end_virt_addr) {
-                    L1PageTableEntry *l1_entry = GetL1Entry(this->l1_table, virt_addr);
+                    L1PageTableEntry *l1_entry = GetL1Entry(m_l1_table, virt_addr);
 
                     /* If an L1 block is mapped, update. */
                     if (l1_entry->IsBlock()) {
@@ -481,7 +485,7 @@ namespace ams::kern::arch::arm64::init {
 
                 const KVirtualAddress end_virt_addr = virt_addr + size;
                 while (virt_addr < end_virt_addr) {
-                    L1PageTableEntry *l1_entry = GetL1Entry(this->l1_table, virt_addr);
+                    L1PageTableEntry *l1_entry = GetL1Entry(m_l1_table, virt_addr);
 
                     /* If an L1 block is mapped, the address isn't free. */
                     if (l1_entry->IsBlock()) {
@@ -530,7 +534,7 @@ namespace ams::kern::arch::arm64::init {
 
                 /* Iteratively reprotect pages until the requested region is reprotected. */
                 while (size > 0) {
-                    L1PageTableEntry *l1_entry = GetL1Entry(this->l1_table, virt_addr);
+                    L1PageTableEntry *l1_entry = GetL1Entry(m_l1_table, virt_addr);
 
                     /* Check if an L1 block is present. */
                     if (l1_entry->IsBlock()) {
@@ -538,7 +542,7 @@ namespace ams::kern::arch::arm64::init {
                         const KPhysicalAddress block = l1_entry->GetBlock();
                         MESOSPHERE_INIT_ABORT_UNLESS(util::IsAligned(GetInteger(virt_addr), L1BlockSize));
                         MESOSPHERE_INIT_ABORT_UNLESS(size >= L1BlockSize);
-                        MESOSPHERE_INIT_ABORT_UNLESS(l1_entry->IsCompatibleWithAttribute(attr_before, false));
+                        MESOSPHERE_INIT_ABORT_UNLESS(l1_entry->IsCompatibleWithAttribute(attr_before, PageTableEntry::SoftwareReservedBit_None, false));
 
                         /* Invalidate the existing L1 block. */
                         *static_cast<PageTableEntry *>(l1_entry) = InvalidPageTableEntry;
@@ -546,7 +550,7 @@ namespace ams::kern::arch::arm64::init {
                         cpu::InvalidateEntireTlb();
 
                         /* Create new L1 block. */
-                        *l1_entry = L1PageTableEntry(PageTableEntry::BlockTag{}, block, attr_after, false);
+                        *l1_entry = L1PageTableEntry(PageTableEntry::BlockTag{}, block, attr_after, PageTableEntry::SoftwareReservedBit_None, false);
 
                         virt_addr += L1BlockSize;
                         size      -= L1BlockSize;
@@ -569,7 +573,7 @@ namespace ams::kern::arch::arm64::init {
                             /* Invalidate the existing contiguous L2 block. */
                             for (size_t i = 0; i < L2ContiguousBlockSize / L2BlockSize; i++) {
                                 /* Ensure that the entry is valid. */
-                                MESOSPHERE_INIT_ABORT_UNLESS(l2_entry[i].IsCompatibleWithAttribute(attr_before, true));
+                                MESOSPHERE_INIT_ABORT_UNLESS(l2_entry[i].IsCompatibleWithAttribute(attr_before, PageTableEntry::SoftwareReservedBit_None, true));
                                 static_cast<PageTableEntry *>(l2_entry)[i] = InvalidPageTableEntry;
                             }
                             cpu::DataSynchronizationBarrierInnerShareable();
@@ -577,7 +581,7 @@ namespace ams::kern::arch::arm64::init {
 
                             /* Create a new contiguous L2 block. */
                             for (size_t i = 0; i < L2ContiguousBlockSize / L2BlockSize; i++) {
-                                l2_entry[i] = L2PageTableEntry(PageTableEntry::BlockTag{}, block + L2BlockSize * i, attr_after, true);
+                                l2_entry[i] = L2PageTableEntry(PageTableEntry::BlockTag{}, block + L2BlockSize * i, attr_after, PageTableEntry::SoftwareReservedBit_None, true);
                             }
 
                             virt_addr += L2ContiguousBlockSize;
@@ -587,7 +591,7 @@ namespace ams::kern::arch::arm64::init {
                             MESOSPHERE_INIT_ABORT_UNLESS(util::IsAligned(GetInteger(virt_addr), L2BlockSize));
                             MESOSPHERE_INIT_ABORT_UNLESS(util::IsAligned(GetInteger(block),     L2BlockSize));
                             MESOSPHERE_INIT_ABORT_UNLESS(size >= L2BlockSize);
-                            MESOSPHERE_INIT_ABORT_UNLESS(l2_entry->IsCompatibleWithAttribute(attr_before, false));
+                            MESOSPHERE_INIT_ABORT_UNLESS(l2_entry->IsCompatibleWithAttribute(attr_before, PageTableEntry::SoftwareReservedBit_None, false));
 
                             /* Invalidate the existing L2 block. */
                             *static_cast<PageTableEntry *>(l2_entry) = InvalidPageTableEntry;
@@ -595,7 +599,7 @@ namespace ams::kern::arch::arm64::init {
                             cpu::InvalidateEntireTlb();
 
                             /* Create new L2 block. */
-                            *l2_entry = L2PageTableEntry(PageTableEntry::BlockTag{}, block, attr_after, false);
+                            *l2_entry = L2PageTableEntry(PageTableEntry::BlockTag{}, block, attr_after, PageTableEntry::SoftwareReservedBit_None, false);
 
                             virt_addr += L2BlockSize;
                             size      -= L2BlockSize;
@@ -621,7 +625,7 @@ namespace ams::kern::arch::arm64::init {
                         /* Invalidate the existing contiguous L3 block. */
                         for (size_t i = 0; i < L3ContiguousBlockSize / L3BlockSize; i++) {
                             /* Ensure that the entry is valid. */
-                            MESOSPHERE_INIT_ABORT_UNLESS(l3_entry[i].IsCompatibleWithAttribute(attr_before, true));
+                            MESOSPHERE_INIT_ABORT_UNLESS(l3_entry[i].IsCompatibleWithAttribute(attr_before, PageTableEntry::SoftwareReservedBit_None, true));
                             static_cast<PageTableEntry *>(l3_entry)[i] = InvalidPageTableEntry;
                         }
                         cpu::DataSynchronizationBarrierInnerShareable();
@@ -629,7 +633,7 @@ namespace ams::kern::arch::arm64::init {
 
                         /* Create a new contiguous L3 block. */
                         for (size_t i = 0; i < L3ContiguousBlockSize / L3BlockSize; i++) {
-                            l3_entry[i] = L3PageTableEntry(PageTableEntry::BlockTag{}, block + L3BlockSize * i, attr_after, true);
+                            l3_entry[i] = L3PageTableEntry(PageTableEntry::BlockTag{}, block + L3BlockSize * i, attr_after, PageTableEntry::SoftwareReservedBit_None, true);
                         }
 
                         virt_addr += L3ContiguousBlockSize;
@@ -639,7 +643,7 @@ namespace ams::kern::arch::arm64::init {
                         MESOSPHERE_INIT_ABORT_UNLESS(util::IsAligned(GetInteger(virt_addr), L3BlockSize));
                         MESOSPHERE_INIT_ABORT_UNLESS(util::IsAligned(GetInteger(block),     L3BlockSize));
                         MESOSPHERE_INIT_ABORT_UNLESS(size >= L3BlockSize);
-                        MESOSPHERE_INIT_ABORT_UNLESS(l3_entry->IsCompatibleWithAttribute(attr_before, false));
+                        MESOSPHERE_INIT_ABORT_UNLESS(l3_entry->IsCompatibleWithAttribute(attr_before, PageTableEntry::SoftwareReservedBit_None, false));
 
                         /* Invalidate the existing L3 block. */
                         *static_cast<PageTableEntry *>(l3_entry) = InvalidPageTableEntry;
@@ -647,7 +651,7 @@ namespace ams::kern::arch::arm64::init {
                         cpu::InvalidateEntireTlb();
 
                         /* Create new L3 block. */
-                        *l3_entry = L3PageTableEntry(PageTableEntry::BlockTag{}, block, attr_after, false);
+                        *l3_entry = L3PageTableEntry(PageTableEntry::BlockTag{}, block, attr_after, PageTableEntry::SoftwareReservedBit_None, false);
 
                         virt_addr += L3BlockSize;
                         size      -= L3BlockSize;
@@ -664,6 +668,7 @@ namespace ams::kern::arch::arm64::init {
                 this->PhysicallyRandomize(virt_addr, size, L2BlockSize, do_copy);
                 this->PhysicallyRandomize(virt_addr, size, L3ContiguousBlockSize, do_copy);
                 this->PhysicallyRandomize(virt_addr, size, L3BlockSize, do_copy);
+                cpu::StoreEntireCacheForInit();
             }
 
     };
@@ -675,43 +680,38 @@ namespace ams::kern::arch::arm64::init {
                 uintptr_t free_bitmap;
             };
         private:
-            State state;
+            State m_state;
         public:
-            constexpr ALWAYS_INLINE KInitialPageAllocator() : state{} { /* ... */ }
+            constexpr ALWAYS_INLINE KInitialPageAllocator() : m_state{} { /* ... */ }
 
             ALWAYS_INLINE void Initialize(uintptr_t address) {
-                this->state.next_address = address + BITSIZEOF(this->state.free_bitmap) * PageSize;
-                this->state.free_bitmap  = ~uintptr_t();
+                m_state.next_address = address + BITSIZEOF(m_state.free_bitmap) * PageSize;
+                m_state.free_bitmap  = ~uintptr_t();
             }
 
             ALWAYS_INLINE void InitializeFromState(uintptr_t state_val) {
-                if (kern::GetTargetFirmware() >= ams::TargetFirmware_10_0_0) {
-                    this->state = *reinterpret_cast<State *>(state_val);
-                } else {
-                    this->state.next_address = state_val;
-                    this->state.free_bitmap  = 0;
-                }
+                m_state = *reinterpret_cast<State *>(state_val);
             }
 
             ALWAYS_INLINE void GetFinalState(State *out) {
-                *out = this->state;
-                this->state = {};
+                *out = m_state;
+                m_state = {};
             }
         public:
             virtual KPhysicalAddress Allocate() override {
-                MESOSPHERE_INIT_ABORT_UNLESS(this->state.next_address != Null<uintptr_t>);
-                uintptr_t allocated = this->state.next_address;
-                if (this->state.free_bitmap != 0) {
+                MESOSPHERE_INIT_ABORT_UNLESS(m_state.next_address != Null<uintptr_t>);
+                uintptr_t allocated = m_state.next_address;
+                if (m_state.free_bitmap != 0) {
                     u64 index;
                     uintptr_t mask;
                     do {
-                        index = KSystemControl::Init::GenerateRandomRange(0, BITSIZEOF(this->state.free_bitmap) - 1);
+                        index = KSystemControl::Init::GenerateRandomRange(0, BITSIZEOF(m_state.free_bitmap) - 1);
                         mask  = (static_cast<uintptr_t>(1) << index);
-                    } while ((this->state.free_bitmap & mask) == 0);
-                    this->state.free_bitmap &= ~mask;
-                    allocated = this->state.next_address - ((BITSIZEOF(this->state.free_bitmap) - index) * PageSize);
+                    } while ((m_state.free_bitmap & mask) == 0);
+                    m_state.free_bitmap &= ~mask;
+                    allocated = m_state.next_address - ((BITSIZEOF(m_state.free_bitmap) - index) * PageSize);
                 } else {
-                    this->state.next_address += PageSize;
+                    m_state.next_address += PageSize;
                 }
 
                 ClearPhysicalMemory(allocated, PageSize);

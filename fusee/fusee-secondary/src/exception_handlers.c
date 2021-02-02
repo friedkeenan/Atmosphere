@@ -19,8 +19,8 @@
 
 #include "exception_handlers.h"
 #include "utils.h"
-#include "display/video_fb.h"
-#include "lib/log.h"
+#include "../../../fusee/common/display/video_fb.h"
+#include "../../../fusee/common/log.h"
 
 #define CODE_DUMP_SIZE      0x30
 #define STACK_DUMP_SIZE     0x30
@@ -90,7 +90,7 @@ void exception_handler_main(uint32_t *registers, unsigned int exception_type) {
     uint32_t cpsr = registers[16];
     uint32_t instr_addr = pc + ((cpsr & 0x20) ? 2 : 4) - CODE_DUMP_SIZE;
 
-    sprintf(exception_log, "An exception occured!\n");
+    sprintf(exception_log, "An exception occurred!\n");
     
     code_dump_size = safecpy(code_dump, (const void *)instr_addr, CODE_DUMP_SIZE);
     stack_dump_size = safecpy(stack_dump, (const void *)registers[13], STACK_DUMP_SIZE);

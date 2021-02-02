@@ -156,6 +156,9 @@ namespace ams::svc {
         InfoType_TotalNonSystemMemorySize       = 21,
         InfoType_UsedNonSystemMemorySize        = 22,
         InfoType_IsApplication                  = 23,
+        InfoType_FreeThreadCount                = 24,
+
+        InfoType_MesosphereMeta                 = 65000,
 
         InfoType_ThreadTickCount                = 0xF0000002,
     };
@@ -167,6 +170,11 @@ namespace ams::svc {
         TickCountInfo_Core3 = 3,
 
         TickCountInfo_Total = std::numeric_limits<s64>::max(),
+    };
+
+    enum MesosphereMetaInfo : u64 {
+        MesosphereMetaInfo_KernelVersion   = 0,
+        MesosphereMetaInfo_IsKTraceEnabled = 1,
     };
 
     enum SystemInfoType : u32 {
@@ -384,6 +392,9 @@ namespace ams::svc {
         /* 7.x+ Should memory allocation be optimized? This requires IsApplication. */
         CreateProcessFlag_OptimizeMemoryAllocation = (1 << 11),
 
+        /* 11.x+ DisableDeviceAddressSpaceMerge. */
+        CreateProcessFlag_DisableDeviceAddressSpaceMerge = (1 << 12),
+
         /* Mask of all flags. */
         CreateProcessFlag_All = CreateProcessFlag_Is64Bit                  |
                                 CreateProcessFlag_AddressSpaceMask         |
@@ -391,7 +402,8 @@ namespace ams::svc {
                                 CreateProcessFlag_EnableAslr               |
                                 CreateProcessFlag_IsApplication            |
                                 CreateProcessFlag_PoolPartitionMask        |
-                                CreateProcessFlag_OptimizeMemoryAllocation,
+                                CreateProcessFlag_OptimizeMemoryAllocation |
+                                CreateProcessFlag_DisableDeviceAddressSpaceMerge,
     };
 
     /* Debug types. */
@@ -458,7 +470,17 @@ namespace ams::svc {
     };
 
     enum KernelDebugType : u32 {
-        /* TODO */
+        KernelDebugType_Thread          =  0,
+        KernelDebugType_ThreadCallStack =  1,
+        KernelDebugType_KernelObject    =  2,
+        KernelDebugType_Handle          =  3,
+        KernelDebugType_Memory          =  4,
+        KernelDebugType_PageTable       =  5,
+        KernelDebugType_CpuUtilization  =  6,
+        KernelDebugType_Process         =  7,
+        KernelDebugType_SuspendProcess  =  8,
+        KernelDebugType_ResumeProcess   =  9,
+        KernelDebugType_Port            = 10,
     };
 
     enum KernelTraceState : u32 {

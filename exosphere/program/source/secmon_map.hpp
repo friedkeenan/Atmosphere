@@ -18,6 +18,7 @@
 
 namespace ams::secmon {
 
+    bool IsPhysicalMemoryAddress(uintptr_t address);
     size_t GetPhysicalMemorySize();
 
     void UnmapTzram();
@@ -30,5 +31,7 @@ namespace ams::secmon {
 
     uintptr_t MapAtmosphereUserPage(uintptr_t address);
     void UnmapAtmosphereUserPage();
+
+    void MapDramForMarikoProgram();
 
 }

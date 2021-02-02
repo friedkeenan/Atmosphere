@@ -25,18 +25,20 @@ namespace ams::kern {
             KScopedSchedulerLock sl;
 
             /* Ensure we actually have locking to do. */
-            if (AMS_UNLIKELY(this->tag.load(std::memory_order_relaxed) != _owner)) {
+            if (AMS_UNLIKELY(m_tag.load(std::memory_order_relaxed) != _owner)) {
                 return;
             }
 
             /* Add the current thread as a waiter on the owner. */
             KThread *owner_thread = reinterpret_cast<KThread *>(_owner & ~1ul);
-            cur_thread->SetAddressKey(reinterpret_cast<uintptr_t>(std::addressof(this->tag)));
+            cur_thread->SetAddressKey(reinterpret_cast<uintptr_t>(std::addressof(m_tag)));
             owner_thread->AddWaiter(cur_thread);
 
             /* Set thread states. */
             if (AMS_LIKELY(cur_thread->GetState() == KThread::ThreadState_Runnable)) {
                 cur_thread->SetState(KThread::ThreadState_Waiting);
+            } else {
+                KScheduler::SetSchedulerUpdateNeeded();
             }
 
             if (owner_thread->IsSuspended()) {
@@ -50,6 +52,7 @@ namespace ams::kern {
             KThread *owner_thread = cur_thread->GetLockOwner();
             if (AMS_UNLIKELY(owner_thread)) {
                 owner_thread->RemoveWaiter(cur_thread);
+                KScheduler::SetSchedulerUpdateNeeded();
             }
         }
     }
@@ -63,7 +66,7 @@ namespace ams::kern {
 
             /* Get the next owner. */
             s32 num_waiters = 0;
-            KThread *next_owner = owner_thread->RemoveWaiterByKey(std::addressof(num_waiters), reinterpret_cast<uintptr_t>(std::addressof(this->tag)));
+            KThread *next_owner = owner_thread->RemoveWaiterByKey(std::addressof(num_waiters), reinterpret_cast<uintptr_t>(std::addressof(m_tag)));
 
             /* Pass the lock to the next owner. */
             uintptr_t next_tag = 0;
@@ -75,6 +78,8 @@ namespace ams::kern {
 
                 if (AMS_LIKELY(next_owner->GetState() == KThread::ThreadState_Waiting)) {
                     next_owner->SetState(KThread::ThreadState_Runnable);
+                } else {
+                    KScheduler::SetSchedulerUpdateNeeded();
                 }
 
                 if (next_owner->IsSuspended()) {
@@ -88,7 +93,7 @@ namespace ams::kern {
             }
 
             /* Write the new tag value. */
-            this->tag.store(next_tag);
+            m_tag.store(next_tag);
         }
     }
 

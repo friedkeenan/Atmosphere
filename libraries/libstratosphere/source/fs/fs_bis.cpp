@@ -33,7 +33,7 @@ namespace ams::fs {
                     AMS_ABORT_UNLESS(dst_size >= needed_size);
 
                     /* Generate the name. */
-                    auto size = std::snprintf(dst, dst_size, "%s:", bis_mount_name);
+                    auto size = util::SNPrintf(dst, dst_size, "%s:", bis_mount_name);
                     AMS_ASSERT(static_cast<size_t>(size) == needed_size - 1);
 
                     return ResultSuccess();
@@ -72,7 +72,7 @@ namespace ams::fs {
 
             fssrv::sf::Path sf_path;
             if (len > 0) {
-                const bool ending_sep = PathTool::IsSeparator(root_path[len - 1]);
+                const bool ending_sep = PathNormalizer::IsSeparator(root_path[len - 1]);
                 FspPathPrintf(std::addressof(sf_path), "%s%s", root_path, ending_sep ? "" : "/");
             } else {
                 sf_path.str[0] = '\x00';

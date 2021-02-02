@@ -17,8 +17,6 @@
 
 namespace ams::kern {
 
-    constinit KThread g_cv_arbiter_compare_thread;
-
     namespace {
 
         ALWAYS_INLINE bool ReadFromUser(u32 *out, KProcessAddress address) {
@@ -179,10 +177,9 @@ namespace ams::kern {
         int num_waiters = 0;
         {
             KScopedSchedulerLock sl;
-            g_cv_arbiter_compare_thread.SetupForConditionVariableCompare(cv_key, -1);
 
-            auto it = this->tree.nfind(g_cv_arbiter_compare_thread);
-            while ((it != this->tree.end()) && (count <= 0 || num_waiters < count) && (it->GetConditionVariableKey() == cv_key)) {
+            auto it = m_tree.nfind_light({ cv_key, -1 });
+            while ((it != m_tree.end()) && (count <= 0 || num_waiters < count) && (it->GetConditionVariableKey() == cv_key)) {
                 KThread *target_thread = std::addressof(*it);
 
                 if (KThread *thread = this->SignalImpl(target_thread); thread != nullptr) {
@@ -193,9 +190,15 @@ namespace ams::kern {
                     }
                 }
 
-                it = this->tree.erase(it);
+                it = m_tree.erase(it);
                 target_thread->ClearConditionVariable();
                 ++num_waiters;
+            }
+
+            /* If we have no waiters, clear the has waiter flag. */
+            if (it == m_tree.end() || it->GetConditionVariableKey() != cv_key) {
+                const u32 has_waiter_flag = 0;
+                WriteToUser(cv_key, std::addressof(has_waiter_flag));
             }
         }
 
@@ -205,13 +208,8 @@ namespace ams::kern {
         }
 
         /* Close threads in the list. */
-        if (num_waiters > MaxThreads) {
-            auto it = thread_list.begin();
-            while (it != thread_list.end()) {
-                KThread *thread = std::addressof(*it);
-                thread->Close();
-                it = thread_list.erase(it);
-            }
+        for (auto it = thread_list.begin(); it != thread_list.end(); it = thread_list.erase(it)) {
+            (*it).Close();
         }
     }
 
@@ -252,6 +250,13 @@ namespace ams::kern {
                     next_owner_thread->Wakeup();
                 }
 
+                /* Write to the cv key. */
+                {
+                    const u32 has_waiter_flag = 1;
+                    WriteToUser(key, std::addressof(has_waiter_flag));
+                    cpu::DataMemoryBarrier();
+                }
+
                 /* Write the value to userspace. */
                 if (!WriteToUser(addr, std::addressof(next_value))) {
                     slp.CancelSleep();
@@ -261,8 +266,8 @@ namespace ams::kern {
 
             /* Update condition variable tracking. */
             {
-                cur_thread->SetConditionVariable(std::addressof(this->tree), addr, key, value);
-                this->tree.insert(*cur_thread);
+                cur_thread->SetConditionVariable(std::addressof(m_tree), addr, key, value);
+                m_tree.insert(*cur_thread);
             }
 
             /* If the timeout is non-zero, set the thread as waiting. */
@@ -285,7 +290,7 @@ namespace ams::kern {
             }
 
             if (cur_thread->IsWaitingForConditionVariable()) {
-                this->tree.erase(this->tree.iterator_to(*cur_thread));
+                m_tree.erase(m_tree.iterator_to(*cur_thread));
                 cur_thread->ClearConditionVariable();
             }
         }

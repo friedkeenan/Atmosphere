@@ -24,7 +24,7 @@ extern "C" {
     u32 __nx_applet_type = AppletType_None;
     u32 __nx_fs_num_sessions = 1;
 
-    #define INNER_HEAP_SIZE 0x4000
+    #define INNER_HEAP_SIZE 0x0
     size_t nx_inner_heap_size = INNER_HEAP_SIZE;
     char   nx_inner_heap[INNER_HEAP_SIZE];
 
@@ -36,17 +36,15 @@ extern "C" {
     alignas(16) u8 __nx_exception_stack[ams::os::MemoryPageSize];
     u64 __nx_exception_stack_size = sizeof(__nx_exception_stack);
     void __libnx_exception_handler(ThreadExceptionDump *ctx);
+
+    void *__libnx_alloc(size_t size);
+    void *__libnx_aligned_alloc(size_t alignment, size_t size);
+    void __libnx_free(void *mem);
 }
 
 namespace ams {
 
     ncm::ProgramId CurrentProgramId = ncm::SystemProgramId::Creport;
-
-    namespace result {
-
-        bool CallFatalOnResultAssertion = true;
-
-    }
 
 }
 
@@ -68,8 +66,31 @@ void __libnx_initheap(void) {
 	fake_heap_end   = (char*)addr + size;
 }
 
+namespace {
+
+
+    constinit u8 g_fs_heap_memory[4_KB];
+    lmem::HeapHandle g_fs_heap_handle;
+
+    void *AllocateForFs(size_t size) {
+        return lmem::AllocateFromExpHeap(g_fs_heap_handle, size);
+    }
+
+    void DeallocateForFs(void *p, size_t size) {
+        return lmem::FreeToExpHeap(g_fs_heap_handle, p);
+    }
+
+    void InitializeFsHeap() {
+        g_fs_heap_handle = lmem::CreateExpHeap(g_fs_heap_memory, sizeof(g_fs_heap_memory), lmem::CreateOption_None);
+    }
+
+}
+
 void __appInit(void) {
     hos::InitializeForStratosphere();
+
+    InitializeFsHeap();
+    fs::SetAllocator(AllocateForFs, DeallocateForFs);
 
     sm::DoWithSession([&]() {
         R_ABORT_UNLESS(fsInitialize());
@@ -83,7 +104,43 @@ void __appExit(void) {
     fsExit();
 }
 
-static creport::CrashReport g_crash_report;
+namespace ams {
+
+    void *Malloc(size_t size) {
+        AMS_ABORT("ams::Malloc was called");
+    }
+
+    void Free(void *ptr) {
+        AMS_ABORT("ams::Free was called");
+    }
+
+}
+
+void *operator new(size_t size) {
+    AMS_ABORT("operator new(size_t) was called");
+}
+
+void operator delete(void *p) {
+    AMS_ABORT("operator delete(void *) was called");
+}
+
+void *__libnx_alloc(size_t size) {
+    AMS_ABORT("__libnx_alloc was called");
+}
+
+void *__libnx_aligned_alloc(size_t alignment, size_t size) {
+    AMS_ABORT("__libnx_aligned_alloc was called");
+}
+
+void __libnx_free(void *mem) {
+    AMS_ABORT("__libnx_free was called");
+}
+
+namespace {
+
+    constinit creport::CrashReport g_crash_report;
+
+}
 
 int main(int argc, char **argv) {
     /* Set thread name. */
@@ -100,33 +157,38 @@ int main(int argc, char **argv) {
         }
     }
 
-    /* Parse crashed PID. */
-    os::ProcessId crashed_pid = creport::ParseProcessIdArgument(argv[0]);
+    /* Parse arguments. */
+    const os::ProcessId crashed_pid = creport::ParseProcessIdArgument(argv[0]);
+    const bool has_extra_info       = argv[1][0] == '1';
+    const bool enable_screenshot    = argc >= 3 && argv[2][0] == '1';
+    const bool enable_jit_debug     = argc >= 4 && argv[3][0] == '1';
 
     /* Initialize the crash report. */
     g_crash_report.Initialize();
 
     /* Try to debug the crashed process. */
-    g_crash_report.BuildReport(crashed_pid, argv[1][0] == '1');
+    g_crash_report.BuildReport(crashed_pid, has_extra_info);
     if (!g_crash_report.IsComplete()) {
         return EXIT_FAILURE;
     }
 
     /* Save report to file. */
-    g_crash_report.SaveReport();
+    g_crash_report.SaveReport(enable_screenshot);
 
-    /* Try to terminate the process. */
-    if (hos::GetVersion() >= hos::Version_10_0_0) {
-        /* On 10.0.0+, use pgl to terminate. */
-        sm::ScopedServiceHolder<pgl::Initialize, pgl::Finalize> pgl_holder;
-        if (pgl_holder) {
-            pgl::TerminateProcess(crashed_pid);
-        }
-    } else {
-        /* On < 10.0.0, use ns:dev to terminate. */
-        sm::ScopedServiceHolder<nsdevInitialize, nsdevExit> ns_holder;
-        if (ns_holder) {
-            nsdevTerminateProcess(static_cast<u64>(crashed_pid));
+    /* If we should, try to terminate the process. */
+    if (hos::GetVersion() < hos::Version_11_0_0 || !enable_jit_debug) {
+        if (hos::GetVersion() >= hos::Version_10_0_0) {
+            /* On 10.0.0+, use pgl to terminate. */
+            sm::ScopedServiceHolder<pgl::Initialize, pgl::Finalize> pgl_holder;
+            if (pgl_holder) {
+                pgl::TerminateProcess(crashed_pid);
+            }
+        } else {
+            /* On < 10.0.0, use ns:dev to terminate. */
+            sm::ScopedServiceHolder<nsdevInitialize, nsdevExit> ns_holder;
+            if (ns_holder) {
+                nsdevTerminateProcess(static_cast<u64>(crashed_pid));
+            }
         }
     }
 
@@ -135,7 +197,7 @@ int main(int argc, char **argv) {
         if (g_crash_report.IsApplication()) {
             return EXIT_SUCCESS;
         }
-    } else if (argv[1][0] == '1') {
+    } else if (has_extra_info) {
         return EXIT_SUCCESS;
     }
 

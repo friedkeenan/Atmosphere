@@ -165,6 +165,7 @@ namespace ams::fuse {
         }
 
         constexpr const TargetFirmware FuseVersionIncrementFirmwares[] = {
+            TargetFirmware_11_0_0,
             TargetFirmware_10_0_0,
             TargetFirmware_9_1_0,
             TargetFirmware_9_0_0,
@@ -207,7 +208,7 @@ namespace ams::fuse {
             return 0;
         }
 
-        static_assert(GetExpectedFuseVersionImpl(TargetFirmware_10_0_0)          == 13);
+        static_assert(GetExpectedFuseVersionImpl(TargetFirmware_11_0_0)          == 14);
         static_assert(GetExpectedFuseVersionImpl(TargetFirmware_1_0_0)           ==  1);
         static_assert(GetExpectedFuseVersionImpl(static_cast<TargetFirmware>(0)) ==  0);
 
@@ -315,7 +316,7 @@ namespace ams::fuse {
             case 0x02: return (true /* TODO: GetSocType() == SocType_Mariko */) ? HardwareType_Calcio : HardwareType_Copper;
             case 0x04: return HardwareType_Iowa;
             case 0x08: return HardwareType_Hoag;
-            case 0x10: return HardwareType_Five;
+            case 0x10: return HardwareType_Aula;
             default:   return HardwareType_Undefined;
         }
     }
@@ -370,7 +371,7 @@ namespace ams::fuse {
             case HardwareType_Iowa:
             case HardwareType_Hoag:
             case HardwareType_Calcio:
-            case HardwareType_Five:
+            case HardwareType_Aula:
                 return SocType_Mariko;
             default:
                 return SocType_Undefined;

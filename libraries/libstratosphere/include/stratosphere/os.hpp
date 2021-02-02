@@ -19,6 +19,7 @@
 #include <stratosphere/os/os_common_types.hpp>
 #include <stratosphere/os/os_tick.hpp>
 #include <stratosphere/os/os_memory_common.hpp>
+#include <stratosphere/os/os_memory_fence.hpp>
 #include <stratosphere/os/os_memory_permission.hpp>
 #include <stratosphere/os/os_memory_heap_api.hpp>
 #include <stratosphere/os/os_memory_virtual_address_api.hpp>
@@ -28,6 +29,7 @@
 #include <stratosphere/os/os_mutex.hpp>
 #include <stratosphere/os/os_condition_variable.hpp>
 #include <stratosphere/os/os_sdk_mutex.hpp>
+#include <stratosphere/os/os_sdk_condition_variable.hpp>
 #include <stratosphere/os/os_rw_lock.hpp>
 #include <stratosphere/os/os_transfer_memory.hpp>
 #include <stratosphere/os/os_semaphore.hpp>
@@ -37,6 +39,7 @@
 #include <stratosphere/os/os_timer_event.hpp>
 #include <stratosphere/os/os_thread_local_storage.hpp>
 #include <stratosphere/os/os_sdk_thread_local_storage.hpp>
+#include <stratosphere/os/os_sdk_reply_and_receive.hpp>
 #include <stratosphere/os/os_thread.hpp>
 #include <stratosphere/os/os_message_queue.hpp>
 #include <stratosphere/os/os_waitable.hpp>

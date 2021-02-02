@@ -25,20 +25,20 @@ namespace ams::kern {
     class KWritableEvent final : public KAutoObjectWithSlabHeapAndContainer<KWritableEvent, KAutoObjectWithList> {
         MESOSPHERE_AUTOOBJECT_TRAITS(KWritableEvent, KAutoObject);
         private:
-            KEvent *parent;
+            KEvent *m_parent;
         public:
-            constexpr explicit KWritableEvent() : parent(nullptr) { /* ... */ }
+            constexpr explicit KWritableEvent() : m_parent(nullptr) { /* ... */ }
             virtual ~KWritableEvent() { /* ... */ }
 
             virtual void Destroy() override;
 
-            static void PostDestroy(uintptr_t arg) { /* ... */ }
+            static void PostDestroy(uintptr_t arg) { MESOSPHERE_UNUSED(arg); /* ... */ }
 
             void Initialize(KEvent *p);
             Result Signal();
             Result Clear();
 
-            constexpr KEvent *GetParent() const { return this->parent; }
+            constexpr KEvent *GetParent() const { return m_parent; }
     };
 
 }

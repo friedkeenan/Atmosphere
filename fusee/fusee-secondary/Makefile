@@ -36,7 +36,7 @@ endef
 #---------------------------------------------------------------------------------
 TARGET		:=	$(notdir $(CURDIR))
 BUILD		:=	build
-SOURCES		:=	src src/sdmmc src/lib src/lib/fatfs src/display
+SOURCES		:=	src ../../fusee/common ../../fusee/common/display ../../fusee/common/fatfs ../../fusee/common/sdmmc
 DATA		:=	data
 INCLUDES	:=	include ../../libraries/libvapours/include
 
@@ -89,7 +89,7 @@ export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 			$(foreach dir,$(DATA),$(CURDIR)/$(dir)) \
 			$(AMS)/exosphere $(AMS)/exosphere/warmboot $(AMS)/exosphere/program/rebootstub \
 			$(AMS)/thermosphere $(AMS)/fusee/fusee-primary $(AMS)/sept/sept-primary \
-			$(AMS)/sept/sept-secondary $(AMS)/emummc $(AMS)/mesosphere/kernel_ldr $(KIPDIRS)
+			$(AMS)/sept/sept-secondary $(AMS)/emummc $(AMS)/mesosphere $(AMS)/mesosphere/kernel_ldr $(KIPDIRS)
 
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
@@ -98,9 +98,10 @@ CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 KIPFILES 	:=	loader.kip ncm.kip pm.kip sm.kip ams_mitm.kip spl.kip boot.kip
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*))) fusee-primary.bin \
-				exosphere.bin warmboot.bin rebootstub.bin thermosphere.bin splash_screen.bmp \
+				exosphere.bin warmboot.bin rebootstub.bin thermosphere.bin splash_screen.bin \
 				sept-primary.bin sept-secondary_00.enc sept-secondary_01.enc emummc.kip \
-				sept-secondary_dev_00.enc sept-secondary_dev_01.enc kernel_ldr.bin $(KIPFILES)
+				sept-secondary_dev_00.enc sept-secondary_dev_01.enc mesosphere.bin kernel_ldr.bin \
+                mariko_fatal.bin $(KIPFILES)
 
 #---------------------------------------------------------------------------------
 # use CXX for linking C++ projects, CC for standard C
@@ -186,11 +187,15 @@ DEPENDS	:=	$(OFILES:.o=.d)
 #---------------------------------------------------------------------------------
 all	:	$(OUTPUT).bin
 
-$(OUTPUT).bin	:	$(OUTPUT).elf
+$(OUTPUT).bin	:	$(OUTPUT)-experimental.bin
+	@python $(TOPDIR)/fusee_make_standard.py $(OUTPUT)-experimental.bin $(OUTPUT).bin
+	@echo built ... $(notdir $@)
+
+$(OUTPUT)-experimental.bin	:	$(OUTPUT)-experimental.elf
 	$(OBJCOPY) -S -O binary $< $@
 	@echo built ... $(notdir $@)
 
-$(OUTPUT).elf	:	$(OFILES)
+$(OUTPUT)-experimental.elf	:	$(OFILES)
 
 %.elf: $(OFILES)
 	@echo linking $(notdir $@)
@@ -212,7 +217,7 @@ sept_primary.bin.o	sept_primary_bin.h:	sept-primary.bin
 	@echo $(notdir $<)
 	@$(_bin2o)
 
-sept_secondary_00.enc.o	sept_secondary_00.h:	sept-secondary_00.enc
+sept_secondary_00.enc.o	sept_secondary_00_enc.h:	sept-secondary_00.enc
 #---------------------------------------------------------------------------------
 	@echo $(notdir $<)
 	@$(_bin2o)

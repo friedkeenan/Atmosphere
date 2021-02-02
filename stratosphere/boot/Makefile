@@ -18,36 +18,11 @@ export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
-
-CFILES      :=	$(foreach dir,$(SOURCES),$(filter-out $(notdir $(wildcard $(dir)/*.arch.*.c)) $(notdir $(wildcard $(dir)/*.board.*.c)) $(notdir $(wildcard $(dir)/*.os.*.c)), \
-                                                      $(notdir $(wildcard $(dir)/*.c))))
-CFILES      +=  $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.arch.$(ATMOSPHERE_ARCH_NAME).c)))
-CFILES      +=  $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.board.$(ATMOSPHERE_BOARD_NAME).c)))
-CFILES      +=  $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.os.$(ATMOSPHERE_OS_NAME).c)))
-
-CPPFILES    :=	$(foreach dir,$(SOURCES),$(filter-out $(notdir $(wildcard $(dir)/*.arch.*.cpp)) $(notdir $(wildcard $(dir)/*.board.*.cpp)) $(notdir $(wildcard $(dir)/*.os.*.cpp)), \
-                                                      $(notdir $(wildcard $(dir)/*.cpp))))
-CPPFILES    +=  $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.arch.$(ATMOSPHERE_ARCH_NAME).cpp)))
-CPPFILES    +=  $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.board.$(ATMOSPHERE_BOARD_NAME).cpp)))
-CPPFILES    +=  $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.os.$(ATMOSPHERE_OS_NAME).cpp)))
-
-SFILES      :=	$(foreach dir,$(SOURCES),$(filter-out $(notdir $(wildcard $(dir)/*.arch.*.s)) $(notdir $(wildcard $(dir)/*.board.*.s)) $(notdir $(wildcard $(dir)/*.os.*.s)), \
-                                                      $(notdir $(wildcard $(dir)/*.s))))
-SFILES      +=  $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.arch.$(ATMOSPHERE_ARCH_NAME).s)))
-SFILES      +=  $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.board.$(ATMOSPHERE_BOARD_NAME).s)))
-SFILES      +=  $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.os.$(ATMOSPHERE_OS_NAME).s)))
+CFILES      :=	$(call FIND_SOURCE_FILES,$(SOURCES),c)
+CPPFILES    :=	$(call FIND_SOURCE_FILES,$(SOURCES),cpp)
+SFILES      :=	$(call FIND_SOURCE_FILES,$(SOURCES),s)
 
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*))) fusee-primary.bin
-
-#---------------------------------------------------------------------------------
-# boot has a custom bin2o rule for fusee-primary -> fusee_primary
-#---------------------------------------------------------------------------------
-define _bin2o
-	bin2s $< | $(AS) -o $(@)
-	echo "extern const u8" `(echo $(<F) | sed -e 's/^\([0-9]\)/_\1/' | tr . _ | tr - _)`"_end[];" > `(echo $(<F) | tr . _ | tr - _)`.h
-	echo "extern const u8" `(echo $(<F) | sed -e 's/^\([0-9]\)/_\1/' | tr . _ | tr - _)`"[];" >> `(echo $(<F) | tr . _ | tr - _)`.h
-	echo "extern const u32" `(echo $(<F) | sed -e 's/^\([0-9]\)/_\1/' | tr . _ | tr - _)`_size";" >> `(echo $(<F) | tr . _ | tr - _)`.h
-endef
 
 #---------------------------------------------------------------------------------
 # use CXX for linking C++ projects, CC for standard C
@@ -121,17 +96,12 @@ $(OUTPUT).kip	:	$(OUTPUT).elf
 
 $(OUTPUT).elf	:	$(OFILES)
 
-boot_power_utils.o: fusee_primary.bin.o fusee_primary_bin.h
+boot_power_utils.o: fusee-primary.bin.o
 
 #---------------------------------------------------------------------------------
 # you need a rule like this for each extension you use as binary data
 #---------------------------------------------------------------------------------
-fusee_primary.bin.o	fusee_primary_bin.h:	fusee-primary.bin
-#---------------------------------------------------------------------------------
-	@echo $(notdir $<)
-	@$(_bin2o)
-
-%.bin.o	:	%.bin
+fusee-primary.bin.o:	fusee-primary.bin
 #---------------------------------------------------------------------------------
 	@echo $(notdir $<)
 	@$(bin2o)

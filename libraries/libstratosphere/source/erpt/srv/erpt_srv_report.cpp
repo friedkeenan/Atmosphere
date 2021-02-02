@@ -21,7 +21,7 @@ namespace ams::erpt::srv {
 
     ReportFileName Report::FileName(ReportId report_id, bool redirect_to_sd) {
         ReportFileName report_name;
-        std::snprintf(report_name.name, sizeof(report_name.name),
+        util::SNPrintf(report_name.name, sizeof(report_name.name),
                       "%s:/%08x-%04x-%04x-%02x%02x-%04x%08x",
                       (redirect_to_sd ? ReportOnSdStoragePath : ReportStoragePath),
                       report_id.uuid_data.time_low,
@@ -46,7 +46,7 @@ namespace ams::erpt::srv {
         }
     }
 
-    ReportFileName Report::FileName() {
+    ReportFileName Report::FileName() const {
         return FileName(this->record->info.id, this->redirect_to_sd_card);
     }
 
@@ -70,7 +70,7 @@ namespace ams::erpt::srv {
         return this->CloseStream();
     }
 
-    Result Report::GetFlags(ReportFlagSet *out) {
+    Result Report::GetFlags(ReportFlagSet *out) const {
         *out = this->record->info.flags;
         return ResultSuccess();
     }
@@ -83,7 +83,7 @@ namespace ams::erpt::srv {
         return ResultSuccess();
     }
 
-    Result Report::GetSize(s64 *out) {
+    Result Report::GetSize(s64 *out) const {
         return this->GetStreamSize(out);
     }
 

@@ -84,8 +84,12 @@ namespace ams::ldr {
         return ldr::ro::UnpinProgram(id);
     }
 
-    Result LoaderService::SetProgramArguments(ncm::ProgramId program_id, const sf::InPointerBuffer &args, u32 args_size) {
+    Result LoaderService::SetProgramArgumentsDeprecated(ncm::ProgramId program_id, const sf::InPointerBuffer &args, u32 args_size) {
         return args::Set(program_id, args.GetPointer(), std::min(args.GetSize(), size_t(args_size)));
+    }
+
+    Result LoaderService::SetProgramArguments(ncm::ProgramId program_id, const sf::InPointerBuffer &args) {
+        return args::Set(program_id, args.GetPointer(), args.GetSize());
     }
 
     Result LoaderService::FlushArguments() {
@@ -111,8 +115,8 @@ namespace ams::ldr {
         fssystem::DestroyExternalCode(program_id);
     }
 
-    void LoaderService::AtmosphereHasLaunchedProgram(sf::Out<bool> out, ncm::ProgramId program_id) {
-        out.SetValue(ldr::HasLaunchedProgram(program_id));
+    void LoaderService::AtmosphereHasLaunchedBootProgram(sf::Out<bool> out, ncm::ProgramId program_id) {
+        out.SetValue(ldr::HasLaunchedBootProgram(program_id));
     }
 
     Result LoaderService::AtmosphereGetProgramInfo(sf::Out<ProgramInfo> out_program_info, sf::Out<cfg::OverrideStatus> out_status, const ncm::ProgramLocation &loc) {

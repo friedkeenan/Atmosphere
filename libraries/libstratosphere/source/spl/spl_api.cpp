@@ -29,7 +29,7 @@ namespace ams::spl {
             Manu
         };
 
-        os::Mutex g_mutex(false);
+        os::SdkMutex g_mutex;
         s32 g_initialize_count = 0;
         InitializeMode g_initialize_mode = InitializeMode::None;
 
@@ -254,7 +254,7 @@ namespace ams::spl {
                 return SocType_Erista;
             case HardwareType::Hoag:
             case HardwareType::Iowa:
-            case HardwareType::_Five_:
+            case HardwareType::Aula:
                 return SocType_Mariko;
             AMS_UNREACHABLE_DEFAULT_CASE();
         }

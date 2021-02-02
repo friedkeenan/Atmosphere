@@ -17,6 +17,7 @@
 #pragma once
 #include <vapours/common.hpp>
 #include <vapours/assert.hpp>
+#include <vapours/util/util_type_traits.hpp>
 #include <chrono>
 
 namespace ams {
@@ -54,6 +55,7 @@ namespace ams {
             constexpr ALWAYS_INLINE friend TimeSpanType operator+(const TimeSpanType &lhs, const TimeSpanType &rhs) { TimeSpanType r(lhs); return r += rhs; }
             constexpr ALWAYS_INLINE friend TimeSpanType operator-(const TimeSpanType &lhs, const TimeSpanType &rhs) { TimeSpanType r(lhs); return r -= rhs; }
     };
+    static_assert(util::is_pod<TimeSpanType>::value);
 
     class TimeSpan {
         private:
@@ -61,7 +63,7 @@ namespace ams {
         private:
             TimeSpanType ts;
         public:
-            constexpr ALWAYS_INLINE TimeSpan(ZeroTag z = nullptr) : ts(TimeSpanType::FromNanoSeconds(0)) { /* ... */ }
+            constexpr ALWAYS_INLINE TimeSpan(ZeroTag z = nullptr) : ts(TimeSpanType::FromNanoSeconds(0)) { AMS_UNUSED(z); /* ... */ }
             constexpr ALWAYS_INLINE TimeSpan(const TimeSpanType &t) : ts(t) { /* ... */ }
 
             template<typename R, typename P>
@@ -95,6 +97,10 @@ namespace ams {
 
             constexpr ALWAYS_INLINE friend TimeSpan operator+(const TimeSpan &lhs, const TimeSpan &rhs) { TimeSpan r(lhs); return r += rhs; }
             constexpr ALWAYS_INLINE friend TimeSpan operator-(const TimeSpan &lhs, const TimeSpan &rhs) { TimeSpan r(lhs); return r -= rhs; }
+
+            constexpr ALWAYS_INLINE operator TimeSpanType() const {
+                return this->ts;
+            }
     };
 
 }

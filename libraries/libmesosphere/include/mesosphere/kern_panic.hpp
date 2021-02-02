@@ -19,17 +19,12 @@
 
 namespace ams::kern {
 
-    template<typename... ArgTypes>
-    ALWAYS_INLINE void UnusedImpl(ArgTypes &&... args) {
-        (static_cast<void>(args), ...);
-    }
-
     NORETURN NOINLINE void Panic(const char *file, int line, const char *format, ...) __attribute__((format(printf, 3, 4)));
     NORETURN NOINLINE void Panic();
 
 }
 
-#define MESOSPHERE_UNUSED(...) ::ams::kern::UnusedImpl(__VA_ARGS__)
+#define MESOSPHERE_UNUSED(...) AMS_UNUSED(__VA_ARGS__)
 
 #ifdef MESOSPHERE_ENABLE_DEBUG_PRINT
 #define MESOSPHERE_PANIC(...) do { ::ams::kern::Panic(__FILE__, __LINE__, ## __VA_ARGS__); } while(0)
@@ -45,8 +40,10 @@ namespace ams::kern {
             MESOSPHERE_PANIC(__VA_ARGS__);          \
         }                                           \
     })
-#else
+#elif defined(MESOSPHERE_PRESERVE_ASSERTION_EXPRESSIONS)
 #define MESOSPHERE_ASSERT_IMPL(expr, ...) do { static_cast<void>(expr); } while (0)
+#else
+#define MESOSPHERE_ASSERT_IMPL(expr, ...) static_cast<void>(0)
 #endif
 
 #define MESOSPHERE_ASSERT(expr)   MESOSPHERE_ASSERT_IMPL(expr, "Assertion failed: %s\n", #expr)
@@ -61,15 +58,17 @@ namespace ams::kern {
 
 #ifdef MESOSPHERE_BUILD_FOR_AUDITING
 #define MESOSPHERE_AUDIT(expr) MESOSPHERE_ASSERT(expr)
-#else
+#elif defined(MESOSPHERE_PRESERVE_AUDIT_EXPRESSIONS)
 #define MESOSPHERE_AUDIT(expr) do { static_cast<void>(expr); } while (0)
+#else
+#define MESOSPHERE_AUDIT(expr) static_cast<void>(0)
 #endif
 
 #define MESOSPHERE_TODO(arg) ({ constexpr const char *__mesosphere_todo = arg; static_cast<void>(__mesosphere_todo); MESOSPHERE_PANIC("TODO (%s): %s\n", __PRETTY_FUNCTION__, __mesosphere_todo); })
 #define MESOSPHERE_UNIMPLEMENTED() MESOSPHERE_PANIC("%s: Unimplemented\n", __PRETTY_FUNCTION__)
 
 #define MESOSPHERE_ABORT() MESOSPHERE_PANIC("Abort()\n");
-#define MESOSPHERE_INIT_ABORT() do { /* ... */ } while (true)
+#define MESOSPHERE_INIT_ABORT() AMS_INFINITE_LOOP()
 
 #define MESOSPHERE_ABORT_UNLESS(expr)               \
     ({                                              \

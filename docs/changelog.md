@@ -1,4 +1,138 @@
 # Changelog
+## 0.17.1
++ A number of atmosphère's modules were using more memory than their Nintendo equivalent's in 0.17.0; a number of code generatio tweaks have been applied to fix this across the board.
+  + A detailed comparison of atmosphère module memory usage versus Nintendo's was made and can be found [here](https://github.com/Atmosphere-NX/Atmosphere/wiki/Memory-Comparisons).
++ Several minor bugs were fixed, including:
+  + A bug was fixed in mesosphère that caused games which attempt to map more memory than the Switch has to fail.
+    + This affected "Piczle Lines DX 500 More Puzzles!", and possibly other games.
+  + Enabling configuration to "blank" PRODINFO no longer causes a hang on Mariko devices (or any devices with newer format).
++ Several issues were fixed, and usability and stability were improved.
+## 0.17.0
++ fusee was heavily rewritten in order to add support for Mariko hardware.
+  + **Please Note**: Mariko hardware currently has no (and may not ever have any) software exploits; fusee works when loaded from bootloader context with the right keys in the security engine. No means of getting the system into this state is provided.
++ An issue was fixed in the way shutdown was performed on Erista hardware.
+  + This fixes an issue that caused OFW to black screen on boot after power off from atmosphere without first doing a reboot.
+  + This also substantially improves power drain when the system is shut off; consoles powered off from Atmosphere should now drain battery at the same reduced rate as original firmware.
++ A number of minor changes were made, including:
+  + A number of inconsistencies in the build system were fixed.
+    + Fow those building atmosphère at home, the `boot` sysmodule will no longer rebuild every time make is invoked.
+    + This substantially improves build times during development iteration.
+  + `sm` was updated to more accurately reflect how official code manages request deferral.
+  + `mesosphère` was updated to more accurately reflect official kernel management of the trace buffer.
+  + `mesosphère` was updated to improve kernel loader's logic by taking advantage of the assumption that we only boot our kernel, not Nintendo's.
++ As it has been a few months with zero reported issues, `mesosphère` is now opt-out.
+    + Users who wish to begin using or continue using mesosphere should use the standard/cool kids zip ("atmosphere-").
+    + Users who wish to opt-out of mesosphere should download and extract the opt-out zip ("atmosphere-WITHOUT_MESOSPHERE-").
++ Several issues were fixed, and usability and stability were improved.
+## 0.16.2
++ Atmosphère release zips no longer bundle BCT.ini, instead relying on defaults in code.
+  + This means atmosphere updates should no longer overwrite any user configuration at all.
+  + If you wish to modify BCT.ini config, copy the template from /config_templates/ as with other configuration.
++ `pgl` and `creport` were further updated to reflect differences in official behavior in 11.0.0.
++ An issue was fixed that caused creport to be launched multiple times on process crash.
+  + This fixes the "duplicate reports" issue that sometimes plagued people.
++ A new system setting (`atmosphere!enable_am_debug_mode`) configuring am to use debug mode.
+  + If you are not a developer or don't see a clear use for this, leave it configured to the default (off).
++ Reboot to payload NRO was updated to fix support with certain payloads.
++ Support was fixed for atmosphere's extension to support homebrew use of new (8.0.0+) kernel mappings.
+  + In particular, when running tracing debug builds of `mesosphère`, hbloader now has access to the kernel trace buffer.
++ Several issues were fixed, and usability and stability were improved.
+## 0.16.1
++ Support was added for 11.0.1.
+  + `mesosphère` was updated to reflect the latest official kernel behavior.
+    + A new svc::InfoType added in 11.0.0 was implemented (it wasn't discovered before 0.16.0 released).
+    + The new Control Flow Integrity (CFI) logic added in 11.0.0 kernel was implemented.
++ `fs` logic was refactored and cleaned up to reflect some newer sysmodule behavioral and structural changes.
++ `exosphère` was updated to allow dynamic control of what uart port is used for logging.
+  + This can be controlled by editing the `log_port`, `log_baud_rate`, and `log_inverted` fields in `exosphere.ini`.
++ `mesosphère` was updated to improve debugging capabilities.
+  + This is still a work in progress, but developers may be interested.
++ A bug was fixed that caused `fatal` to fatal error if the fatal process was already being debugged.
++ Several issues were fixed, and usability and stability were improved.
+## 0.16.0
++ Support was added for 11.0.0.
+  + `exosphère` was updated to reflect the latest official secure monitor behavior.
+  + `mesosphère` was updated to reflect the latest official kernel behavior.
+  + `loader`, `sm`, `boot`, `pgl` were updated to reflect the latest official behaviors.
+    + **Please Note**: 11.0.0 implements an opt-in version of the atmosphère `sm` extension that allows for closing session without unregistering services.
+      + Correspondingly, the extension will be deprecated in favor of the new official opt-in command. In 0.17.0, it will be removed entirely.
+      + If your custom system module relies on this extension (however unlikely that seems to me), please update it accordingly.
+  + `erpt` was partially updated to provide compatibility with 11.0.0.
+    + The latest firmware attaches additional fields and context information to logs.
+    + A future atmosphère update will implement this logic, so that users who are interested can also get the new information when examining their logs.
+  + **Please Note**: 11.0.0 introduced breaking changes to the `usb` system module's `usb:ds` API.
+    + Homebrew which uses the `usb:ds` service should rebuild with the latest libnx version to support running on 11.0.0.
++ The `boot` system module was rewritten to reflect the huge driver changes introduced in 8.0.0.
+  + This includes a number of improvements to both logo display and battery management logic.
++ Support was added for configuring the address space width for `hbl`.
+  + The `hbl_config!override_address_space_(#)` and `hbl_config!override_any_app_address_space` can now be set to `39_bit`, `36_bit`, or `32_bit` to control the address space for hbl on a per-override basis.
+  + If a configuration has not been set, hbl will now default to 39-bit address space.
+    + Previously, a legacy 36-bit address space was always used to maintain compatibility with 1.0.0.
+    + A new loader extension was added to support 39-bit whenever possible (including mesosphere-on-1.0.0), with fallback to 36-bit when unavailable.
++ Support was added to a number of components for running on Mariko hardware.
+  + The `boot` system module can now safely be run on mariko hardware, performing correct hardware initialization.
+  + Daybreak (and generally, system update logic) were updated to be usable on Mariko.
+  + Boot0 protection/management logic was updated to perform correct actions on Mariko.
+  + Reboot to payload does not and cannot work on Mariko. Correspondingly, A "fatal error" handler was written, to display and save fatal errors from within TrustZone.
+  + **Please Note:** Atmosphere is still not properly usable on Mariko hardware.
+    + In particular, wake-from-sleep will not properly function (the magic numbers aren't set correctly), among a few other minor issues.
++ `exosphère` received support for building under debug configuration.
+  + A small (otherwise unused) portion of IRAM is now reserved for debug-only exosphere code (this region is unused/untouched under release config).
+  + This enables logging (including printf) to uart from the secure monitor, for those interested.
++ A number of bugs were fixed, including:
+  + Minor issues in a number of filesystem related code were fixed.
+  + An issue was fixed that could cause NCM to abort on consoles which came with 3.0.x and were never updated.
++ Several issues were fixed, and usability and stability were improved.
+## 0.15.0
++ fusee-primary's panic display was updated to automatically identify and give suggestions to resolve many of the most common errors users encounter.
++ Having been tested as well as I can alone, `mesosphere` (atmosphère's reimplementation of the Nintendo Switch kernel) is now available for users interested in trying it.
+  + Beginning in this release and until it is stable and well-tested, atmosphère will distribute two zips.
+    + Users who wish to opt-in to mesosphere should download and extract the "cool kids" zip ("atmosphere-EXPERIMENTAL-").
+    + Users who do not wish to use mesosphere should continue using the normal zip ("atmosphere-").
+  + Users may detect whether mesosphere is active in system settings.
+    + When mesosphere is active, the system version string will display "M.15.0" rather than "0.15.0", and so on for future releases.
+    + Crash reports and the like will contain information on whether or not the user is using mesosphere, as well.
+  + There are "probably" no material user-facing benefits to using mesosphere at this time.
+    + Developers may be interested in the fact that mesosphere provides many newer SVC APIs even when on lower firmware versions.
+    + The primary benefit to using mesosphere is that any issues you may encounter and report to me will be fixed.
+      + All users who choose to opt in to using mesosphere have my deepest gratitude.
+  + **Note:** If using hekate instead of fusee-primary, you will have to wait for the next hekate release for mesosphere to function, as hekate's support has not yet been included in an official release build.
+    + This will be updated in the release notes when hekate provides a new release.
+  + As mentioned in previous release notes, when mesosphere is stable and well-tested, it will be enabled by default and atmosphère's version will transition to 1.0.0.
++ Having been tested sufficiently over the last half-year, Atmosphere's NCM implementation is now opt-out, rather than opt in.
+  + In the unlikely event that any issues are encountered, please report them to @SciresM.
+  + Users interested in opting out of using our implementation should set `stratosphere!disable_ncm = 1` in BCT.ini.
+  + The NCM implementation will stop being opt-out in a future update, probably around the same time that mesosphere becomes opt-out instead of opt-in.
++ Several bugs were fixed, including:
+  + Loader now sets HBL's thread priority to a higher value when loading it in applet mode.
+    + This fixes an extremely-slow launch ("hang") when using applet-HBL with certain games that do not suspend while inactive (e.g. Super Mario Sunshine).
+  + set.mitm now caches user language configuration much more heavily.
+    + This severely reduces lag in certain games which misuse the "nn::oe::GetDesiredLanguage()" API.
+  + A bug was fixed that could cause erpt to fatal when loading an official save file that had error report attachments in it.
++ General system stability improvements to enhance the user's experience.
+## 0.14.4
++ Several bugs were fixed involving the official jit sysmodule added in 10.0.0.
+  + A Process handle leak was fixed when JitPlugin NRRs were registered with the `ro` sysmodule.
+    + This prevented processes using jit from being able to exit, causing a full system freeze.
+  + The `sm` atmosphere extension to not unregister services when the server's connection is closed was special-case disabled for `jit:u`.
+    + This extension is normally desirable in order to allow more concurrent processes to exist (as only 0x40 sm connections may ever be concurrently open), but official jit sysmodule relies on the behavior.
+    + This would cause crashes on attempts to launch a program using jit services more than once per reboot.
++ General system stability improvements to enhance the user's experience.
+## 0.14.3
++ Support was added for 10.2.0.
++ General system stability improvements to enhance the user's experience.
+## 0.14.2
++ A bug was fixed that could cause a deadlock when installing mitm services.
+  + Fixing this required a breaking change to the client behavior when installing a mitm service, and so custom sysmodules which use mitm will need to be re-compiled to function properly.
++ A bug was fixed that caused atmosphere sysmodules to respond incorrectly when receiving invalid messages.
++ A bug was fixed that caused fatal auto-reboot timing to work improperly.
++ Support was added to fusee for loading binaries for `mesosphere`, atmosphère's reimplementation of the Nintendo Switch kernel.
+  + 0.14.2 does not include mesosphere, but those who are especially interested can build and test mesosphere themselves.
+  + In the future, to enable a sufficient testing period Atmosphère releases will distribute two zips for some time.
+    + One zip will use mesosphere, and the other will not.
+    + This will allow users who are interested to opt-in to mesosphere usage before it has been tested to be stable.
+  + When mesosphere is stable and well-tested, it will be enabled by default and Atmosphère's version will transition to 1.0.0.
++ General system stability improvements to enhance the user's experience.
 ## 0.14.1
 + An issue was fixed in 0.14.0 that would cause a black screen on boot when the INI1's size was not aligned to 8 bytes.
 + General system stability improvements to enhance the user's experience.

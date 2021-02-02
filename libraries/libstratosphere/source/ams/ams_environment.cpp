@@ -74,7 +74,10 @@ namespace ams {
             ams_ctx.pc = ctx->pc.x;
             ams_ctx.pstate = ctx->pstate;
             ams_ctx.afsr0 = ctx->afsr0;
-            ams_ctx.afsr1 = ctx->afsr1;
+            ams_ctx.afsr1 = (static_cast<u64>(::ams::exosphere::GetVersion(ATMOSPHERE_RELEASE_VERSION)) << 32) | static_cast<u64>(hos::GetVersion());
+            if (svc::IsKernelMesosphere()) {
+                ams_ctx.afsr1 |= (static_cast<u64>('M') << (BITSIZEOF(u64) - BITSIZEOF(u8)));
+            }
             ams_ctx.far = ctx->far.x;
             ams_ctx.report_identifier = armGetSystemTick();
 
@@ -173,7 +176,6 @@ extern "C" {
 
     /* Redefine C++ exception handlers. Requires wrap linker flag. */
     #define WRAP_ABORT_FUNC(func) void NORETURN __wrap_##func(void) { abort(); __builtin_unreachable(); }
-    WRAP_ABORT_FUNC(__cxa_pure_virtual)
     WRAP_ABORT_FUNC(__cxa_throw)
     WRAP_ABORT_FUNC(__cxa_rethrow)
     WRAP_ABORT_FUNC(__cxa_allocate_exception)
@@ -196,9 +198,6 @@ extern "C" {
 
 /* Custom abort handler, so that std::abort will trigger these. */
 void abort() {
-    static ams::os::Mutex abort_lock(true);
-    std::scoped_lock lk(abort_lock);
-
     ams::AbortImpl();
     __builtin_unreachable();
 }

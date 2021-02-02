@@ -19,6 +19,12 @@
 
 namespace ams::sm {
 
+    UserService::~UserService() {
+        if (this->has_initialized) {
+            impl::OnClientDisconnected(this->process_id);
+        }
+    }
+
     Result UserService::RegisterClient(const sf::ClientProcessId &client_process_id) {
         this->process_id = client_process_id.GetValue();
         this->has_initialized = true;
@@ -43,6 +49,11 @@ namespace ams::sm {
     Result UserService::UnregisterService(ServiceName service) {
         R_TRY(this->EnsureInitialized());
         return impl::UnregisterService(this->process_id, service);
+    }
+
+    Result UserService::DetachClient(const sf::ClientProcessId &client_process_id) {
+        this->has_initialized = false;
+        return ResultSuccess();
     }
 
     Result UserService::AtmosphereInstallMitm(sf::OutMoveHandle srv_h, sf::OutMoveHandle qry_h, ServiceName service) {
@@ -73,6 +84,11 @@ namespace ams::sm {
     Result UserService::AtmosphereDeclareFutureMitm(ServiceName service) {
         R_TRY(this->EnsureInitialized());
         return impl::DeclareFutureMitm(this->process_id, service);
+    }
+
+    Result UserService::AtmosphereClearFutureMitm(ServiceName service) {
+        R_TRY(this->EnsureInitialized());
+        return impl::ClearFutureMitm(this->process_id, service);
     }
 
 

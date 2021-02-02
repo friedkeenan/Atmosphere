@@ -33,7 +33,7 @@ namespace ams::kern::arch::arm64 {
             explicit KDebug() { /* ... */ }
             virtual ~KDebug() { /* ... */ }
 
-            static void PostDestroy(uintptr_t arg) { /* ... */ }
+            static void PostDestroy(uintptr_t arg) { MESOSPHERE_UNUSED(arg); /* ... */ }
         public:
             virtual Result GetThreadContextImpl(ams::svc::ThreadContext *out, KThread *thread, u32 context_flags) override;
             virtual Result SetThreadContextImpl(const ams::svc::ThreadContext &ctx, KThread *thread, u32 context_flags) override;
@@ -43,6 +43,9 @@ namespace ams::kern::arch::arm64 {
         public:
             static uintptr_t GetProgramCounter(const KThread &thread);
             static void SetPreviousProgramCounter();
+
+            static void PrintRegister(KThread *thread = nullptr);
+            static void PrintBacktrace(KThread *thread = nullptr);
 
             static Result BreakIfAttached(ams::svc::BreakReason break_reason, uintptr_t address, size_t size);
             static Result SetHardwareBreakPoint(ams::svc::HardwareBreakPointRegisterName name, u64 flags, u64 value);
@@ -61,8 +64,6 @@ namespace ams::kern::arch::arm64 {
                     }
                 }
             }
-
-            /* TODO: This is a placeholder definition. */
     };
 
 }

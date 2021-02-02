@@ -20,15 +20,13 @@
 
 namespace ams::kern {
 
-    extern KThread g_cv_arbiter_compare_thread;
-
     class KConditionVariable {
         public:
             using ThreadTree = typename KThread::ConditionVariableThreadTreeType;
         private:
-            ThreadTree tree;
+            ThreadTree m_tree;
         public:
-            constexpr KConditionVariable() : tree() { /* ... */ }
+            constexpr KConditionVariable() : m_tree() { /* ... */ }
 
             /* Arbitration. */
             Result SignalToAddress(KProcessAddress addr);

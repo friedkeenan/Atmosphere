@@ -18,14 +18,15 @@
 
 namespace ams::ldr {
 
-    class LoaderService final {
+    class LoaderService {
         public:
             /* Official commands. */
             Result CreateProcess(sf::OutMoveHandle proc_h, PinId id, u32 flags, sf::CopyHandle reslimit_h);
             Result GetProgramInfo(sf::Out<ProgramInfo> out_program_info, const ncm::ProgramLocation &loc);
             Result PinProgram(sf::Out<PinId> out_id, const ncm::ProgramLocation &loc);
             Result UnpinProgram(PinId id);
-            Result SetProgramArguments(ncm::ProgramId program_id, const sf::InPointerBuffer &args, u32 args_size);
+            Result SetProgramArgumentsDeprecated(ncm::ProgramId program_id, const sf::InPointerBuffer &args, u32 args_size);
+            Result SetProgramArguments(ncm::ProgramId program_id, const sf::InPointerBuffer &args);
             Result FlushArguments();
             Result GetProcessModuleInfo(sf::Out<u32> count, const sf::OutPointerArray<ModuleInfo> &out, os::ProcessId process_id);
             Result SetEnabledProgramVerification(bool enabled);
@@ -33,7 +34,7 @@ namespace ams::ldr {
             /* Atmosphere commands. */
             Result AtmosphereRegisterExternalCode(sf::OutMoveHandle out, ncm::ProgramId program_id);
             void   AtmosphereUnregisterExternalCode(ncm::ProgramId program_id);
-            void   AtmosphereHasLaunchedProgram(sf::Out<bool> out, ncm::ProgramId program_id);
+            void   AtmosphereHasLaunchedBootProgram(sf::Out<bool> out, ncm::ProgramId program_id);
             Result AtmosphereGetProgramInfo(sf::Out<ProgramInfo> out_program_info, sf::Out<cfg::OverrideStatus> out_status, const ncm::ProgramLocation &loc);
             Result AtmospherePinProgram(sf::Out<PinId> out_id, const ncm::ProgramLocation &loc, const cfg::OverrideStatus &override_status);
     };

@@ -291,8 +291,9 @@ namespace ams::kern::svc {
             R_UNLESS(debug.IsNotNull(), svc::ResultInvalidHandle());
 
             /* Get the thread from its id. */
-            KScopedAutoObject thread = KThread::GetThreadFromId(thread_id);
-            R_UNLESS(thread.IsNotNull(), svc::ResultInvalidThreadId());
+            KThread *thread = KThread::GetThreadFromId(thread_id);
+            R_UNLESS(thread != nullptr, svc::ResultInvalidThreadId());
+            ON_SCOPE_EXIT { thread->Close(); };
 
             /* Get the process from the debug object. */
             KScopedAutoObject process = debug->GetProcess();
@@ -362,7 +363,11 @@ namespace ams::kern::svc {
                 case ams::svc::DebugThreadParam_IdealCore:
                     {
                         /* Get the ideal core. */
-                        *out_32 = thread->GetIdealCore();
+                        s32 core_id;
+                        u64 affinity_mask;
+                        thread->GetPhysicalCoreMask(std::addressof(core_id), std::addressof(affinity_mask));
+
+                        *out_32 = core_id;
                     }
                     break;
                 case ams::svc::DebugThreadParam_CurrentCore:
@@ -374,7 +379,11 @@ namespace ams::kern::svc {
                 case ams::svc::DebugThreadParam_AffinityMask:
                     {
                         /* Get the affinity mask. */
-                        *out_32 = thread->GetAffinityMask().GetAffinityMask();
+                        s32 core_id;
+                        u64 affinity_mask;
+                        thread->GetPhysicalCoreMask(std::addressof(core_id), std::addressof(affinity_mask));
+
+                        *out_32 = affinity_mask;
                     }
                     break;
                 default:

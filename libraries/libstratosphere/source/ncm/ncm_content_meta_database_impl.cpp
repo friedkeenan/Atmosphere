@@ -49,12 +49,12 @@ namespace ams::ncm {
         return ResultSuccess();
     }
 
-    Result ContentMetaDatabaseImpl::Set(const ContentMetaKey &key, sf::InBuffer value) {
+    Result ContentMetaDatabaseImpl::Set(const ContentMetaKey &key, const sf::InBuffer &value) {
         R_TRY(this->EnsureEnabled());
         return this->kvs->Set(key, value.GetPointer(), value.GetSize());
     }
 
-    Result ContentMetaDatabaseImpl::Get(sf::Out<u64> out_size, const ContentMetaKey &key, sf::OutBuffer out_value) {
+    Result ContentMetaDatabaseImpl::Get(sf::Out<u64> out_size, const ContentMetaKey &key, const sf::OutBuffer &out_value) {
         R_TRY(this->EnsureEnabled());
 
         /* Get the entry from our key-value store. */
@@ -381,7 +381,7 @@ namespace ams::ncm {
 
         /* Read content meta infos from the given offset up to the given count. */
         size_t count;
-        for (count = 0; count < out_meta_info.GetSize() && count + offset <= reader.GetContentMetaCount(); count++) {
+        for (count = 0; count < out_meta_info.GetSize() && count + offset < reader.GetContentMetaCount(); count++) {
             out_meta_info[count] = *reader.GetContentMetaInfo(count + offset);
         }
 

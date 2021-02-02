@@ -14,7 +14,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <mesosphere.hpp>
-#include "kern_mc_registers.hpp"
+
+#if defined(MESOSPHERE_BUILD_FOR_DEBUGGING) || defined(MESOSPHERE_BUILD_FOR_AUDITING)
+#define MESOSPHERE_ENABLE_MEMORY_CONTROLLER_INTERRUPT
+#endif
 
 namespace ams::kern::board::nintendo::nx {
 
@@ -207,10 +210,10 @@ namespace ams::kern::board::nintendo::nx {
                     Bit_Readable  = 31,
                 };
             private:
-                u32 value;
+                u32 m_value;
             protected:
                 constexpr ALWAYS_INLINE u32 SelectBit(Bit n) const {
-                    return (this->value & (1u << n));
+                    return (m_value & (1u << n));
                 }
 
                 constexpr ALWAYS_INLINE bool GetBit(Bit n) const {
@@ -228,7 +231,7 @@ namespace ams::kern::board::nintendo::nx {
                 ALWAYS_INLINE void SetValue(u32 v) {
                     /* Prevent re-ordering around entry modifications. */
                     __asm__ __volatile__("" ::: "memory");
-                    this->value = v;
+                    m_value = v;
                     __asm__ __volatile__("" ::: "memory");
                 }
             public:
@@ -243,7 +246,7 @@ namespace ams::kern::board::nintendo::nx {
 
                 constexpr ALWAYS_INLINE u32 GetAttributes() const { return this->SelectBit(Bit_NonSecure) | this->SelectBit(Bit_Writeable) | this->SelectBit(Bit_Readable); }
 
-                constexpr ALWAYS_INLINE KPhysicalAddress GetPhysicalAddress() const { return (static_cast<u64>(this->value) << DevicePageBits) & PhysicalAddressMask; }
+                constexpr ALWAYS_INLINE KPhysicalAddress GetPhysicalAddress() const { return (static_cast<u64>(m_value) << DevicePageBits) & PhysicalAddressMask; }
 
                 ALWAYS_INLINE void Invalidate() { this->SetValue(0); }
         };
@@ -283,36 +286,36 @@ namespace ams::kern::board::nintendo::nx {
                 static constexpr size_t NumWords = AsidCount / BitsPerWord;
                 static constexpr WordType FullWord = ~WordType(0u);
             private:
-                WordType state[NumWords];
-                KLightLock lock;
+                WordType m_state[NumWords];
+                KLightLock m_lock;
             private:
                 constexpr void ReserveImpl(u8 asid) {
-                    this->state[asid / BitsPerWord] |= (1u << (asid % BitsPerWord));
+                    m_state[asid / BitsPerWord] |= (1u << (asid % BitsPerWord));
                 }
 
                 constexpr void ReleaseImpl(u8 asid) {
-                    this->state[asid / BitsPerWord] &= ~(1u << (asid % BitsPerWord));
+                    m_state[asid / BitsPerWord] &= ~(1u << (asid % BitsPerWord));
                 }
 
                 static constexpr ALWAYS_INLINE WordType ClearLeadingZero(WordType value) {
                     return __builtin_clzll(value) - (BITSIZEOF(unsigned long long) - BITSIZEOF(WordType));
                 }
             public:
-                constexpr KDeviceAsidManager() : state(), lock() {
+                constexpr KDeviceAsidManager() : m_state(), m_lock() {
                     for (size_t i = 0; i < NumReservedAsids; i++) {
                         this->ReserveImpl(ReservedAsids[i]);
                     }
                 }
 
                 Result Reserve(u8 *out, size_t num_desired) {
-                    KScopedLightLock lk(this->lock);
+                    KScopedLightLock lk(m_lock);
                     MESOSPHERE_ASSERT(num_desired > 0);
 
                     size_t num_reserved = 0;
                     for (size_t i = 0; i < NumWords; i++) {
-                        while (this->state[i] != FullWord) {
-                            const WordType clear_bit = (this->state[i] + 1) ^ (this->state[i]);
-                            this->state[i] |= clear_bit;
+                        while (m_state[i] != FullWord) {
+                            const WordType clear_bit = (m_state[i] + 1) ^ (m_state[i]);
+                            m_state[i] |= clear_bit;
                             out[num_reserved++] = static_cast<u8>(BitsPerWord * i + BitsPerWord - 1 - ClearLeadingZero(clear_bit));
                             R_SUCCEED_IF(num_reserved == num_desired);
                         }
@@ -326,19 +329,19 @@ namespace ams::kern::board::nintendo::nx {
                 }
 
                 void Release(u8 asid) {
-                    KScopedLightLock lk(this->lock);
+                    KScopedLightLock lk(m_lock);
                     this->ReleaseImpl(asid);
                 }
         };
 
         /* Globals. */
-        KLightLock g_lock;
-        u8 g_reserved_asid;
-        KPhysicalAddress   g_memory_controller_address;
-        KPhysicalAddress   g_reserved_table_phys_addr;
-        KDeviceAsidManager g_asid_manager;
-        u32 g_saved_page_tables[AsidCount];
-        u32 g_saved_asid_registers[ams::svc::DeviceName_Count];
+        constinit KLightLock g_lock;
+        constinit u8 g_reserved_asid;
+        constinit KPhysicalAddress   g_memory_controller_address;
+        constinit KPhysicalAddress   g_reserved_table_phys_addr;
+        constinit KDeviceAsidManager g_asid_manager;
+        constinit u32 g_saved_page_tables[AsidCount];
+        constinit u32 g_saved_asid_registers[ams::svc::DeviceName_Count];
 
         /* Memory controller access functionality. */
         void WriteMcRegister(size_t offset, u32 value) {
@@ -349,15 +352,246 @@ namespace ams::kern::board::nintendo::nx {
             return KSystemControl::ReadRegisterPrivileged(GetInteger(g_memory_controller_address) + offset);
         }
 
-        void SmmuSynchronizationBarrier() {
+        /* Memory controller interrupt functionality. */
+
+        constexpr const char * const MemoryControllerClientNames[138] = {
+            [  0] = "csr_ptcr (ptc)",
+            [  1] = "csr_display0a (dc)",
+            [  2] = "csr_display0ab (dcb)",
+            [  3] = "csr_display0b (dc)",
+            [  4] = "csr_display0bb (dcb)",
+            [  5] = "csr_display0c (dc)",
+            [  6] = "csr_display0cb (dcb)",
+            [  7] = "Unknown Client",
+            [  8] = "Unknown Client",
+            [  9] = "Unknown Client",
+            [ 10] = "Unknown Client",
+            [ 11] = "Unknown Client",
+            [ 12] = "Unknown Client",
+            [ 13] = "Unknown Client",
+            [ 14] = "csr_afir (afi)",
+            [ 15] = "csr_avpcarm7r (avpc)",
+            [ 16] = "csr_displayhc (dc)",
+            [ 17] = "csr_displayhcb (dcb)",
+            [ 18] = "Unknown Client",
+            [ 19] = "Unknown Client",
+            [ 20] = "Unknown Client",
+            [ 21] = "csr_hdar (hda)",
+            [ 22] = "csr_host1xdmar (hc)",
+            [ 23] = "csr_host1xr (hc)",
+            [ 24] = "Unknown Client",
+            [ 25] = "Unknown Client",
+            [ 26] = "Unknown Client",
+            [ 27] = "Unknown Client",
+            [ 28] = "csr_nvencsrd (nvenc)",
+            [ 29] = "csr_ppcsahbdmar (ppcs)",
+            [ 30] = "csr_ppcsahbslvr (ppcs)",
+            [ 31] = "csr_satar (sata)",
+            [ 32] = "Unknown Client",
+            [ 33] = "Unknown Client",
+            [ 34] = "Unknown Client",
+            [ 35] = "Unknown Client",
+            [ 36] = "Unknown Client",
+            [ 37] = "Unknown Client",
+            [ 38] = "Unknown Client",
+            [ 39] = "csr_mpcorer (cpu)",
+            [ 40] = "Unknown Client",
+            [ 41] = "Unknown Client",
+            [ 42] = "Unknown Client",
+            [ 43] = "csw_nvencswr (nvenc)",
+            [ 44] = "Unknown Client",
+            [ 45] = "Unknown Client",
+            [ 46] = "Unknown Client",
+            [ 47] = "Unknown Client",
+            [ 48] = "Unknown Client",
+            [ 49] = "csw_afiw (afi)",
+            [ 50] = "csw_avpcarm7w (avpc)",
+            [ 51] = "Unknown Client",
+            [ 52] = "Unknown Client",
+            [ 53] = "csw_hdaw (hda)",
+            [ 54] = "csw_host1xw (hc)",
+            [ 55] = "Unknown Client",
+            [ 56] = "Unknown Client",
+            [ 57] = "csw_mpcorew (cpu)",
+            [ 58] = "Unknown Client",
+            [ 59] = "csw_ppcsahbdmaw (ppcs)",
+            [ 60] = "csw_ppcsahbslvw (ppcs)",
+            [ 61] = "csw_sataw (sata)",
+            [ 62] = "Unknown Client",
+            [ 63] = "Unknown Client",
+            [ 64] = "Unknown Client",
+            [ 65] = "Unknown Client",
+            [ 66] = "Unknown Client",
+            [ 67] = "Unknown Client",
+            [ 68] = "csr_ispra (isp2)",
+            [ 69] = "Unknown Client",
+            [ 70] = "csw_ispwa (isp2)",
+            [ 71] = "csw_ispwb (isp2)",
+            [ 72] = "Unknown Client",
+            [ 73] = "Unknown Client",
+            [ 74] = "csr_xusb_hostr (xusb_host)",
+            [ 75] = "csw_xusb_hostw (xusb_host)",
+            [ 76] = "csr_xusb_devr (xusb_dev)",
+            [ 77] = "csw_xusb_devw (xusb_dev)",
+            [ 78] = "csr_isprab (isp2b)",
+            [ 79] = "Unknown Client",
+            [ 80] = "csw_ispwab (isp2b)",
+            [ 81] = "csw_ispwbb (isp2b)",
+            [ 82] = "Unknown Client",
+            [ 83] = "Unknown Client",
+            [ 84] = "csr_tsecsrd (tsec)",
+            [ 85] = "csw_tsecswr (tsec)",
+            [ 86] = "csr_a9avpscr (a9avp)",
+            [ 87] = "csw_a9avpscw (a9avp)",
+            [ 88] = "csr_gpusrd (gpu)",
+            [ 89] = "csw_gpuswr (gpu)",
+            [ 90] = "csr_displayt (dc)",
+            [ 91] = "Unknown Client",
+            [ 92] = "Unknown Client",
+            [ 93] = "Unknown Client",
+            [ 94] = "Unknown Client",
+            [ 95] = "Unknown Client",
+            [ 96] = "csr_sdmmcra (sdmmc1a)",
+            [ 97] = "csr_sdmmcraa (sdmmc2a)",
+            [ 98] = "csr_sdmmcr (sdmmc3a)",
+            [ 99] = "csr_sdmmcrab (sdmmc4a)",
+            [100] = "csw_sdmmcwa (sdmmc1a)",
+            [101] = "csw_sdmmcwaa (sdmmc2a)",
+            [102] = "csw_sdmmcw (sdmmc3a)",
+            [103] = "csw_sdmmcwab (sdmmc4a)",
+            [104] = "Unknown Client",
+            [105] = "Unknown Client",
+            [106] = "Unknown Client",
+            [107] = "Unknown Client",
+            [108] = "csr_vicsrd (vic)",
+            [109] = "csw_vicswr (vic)",
+            [110] = "Unknown Client",
+            [111] = "Unknown Client",
+            [112] = "Unknown Client",
+            [113] = "Unknown Client",
+            [114] = "csw_viw (vi)",
+            [115] = "csr_displayd (dc)",
+            [116] = "Unknown Client",
+            [117] = "Unknown Client",
+            [118] = "Unknown Client",
+            [119] = "Unknown Client",
+            [120] = "csr_nvdecsrd (nvdec)",
+            [121] = "csw_nvdecswr (nvdec)",
+            [122] = "csr_aper (ape)",
+            [123] = "csw_apew (ape)",
+            [124] = "Unknown Client",
+            [125] = "Unknown Client",
+            [126] = "csr_nvjpgsrd (nvjpg)",
+            [127] = "csw_nvjpgswr (nvjpg)",
+            [128] = "csr_sesrd (se)",
+            [129] = "csw_seswr (se)",
+            [130] = "csr_axiapr (axiap)",
+            [131] = "csw_axiapw (axiap)",
+            [132] = "csr_etrr (etr)",
+            [133] = "csw_etrw (etr)",
+            [134] = "csr_tsecsrdb (tsecb)",
+            [135] = "csw_tsecswrb (tsecb)",
+            [136] = "csr_gpusrd2 (gpu)",
+            [137] = "csw_gpuswr2 (gpu)",
+        };
+
+        constexpr const char * GetMemoryControllerClientName(size_t i) {
+            if (i < util::size(MemoryControllerClientNames)) {
+                return MemoryControllerClientNames[i];
+            }
+            return "Unknown Client";
+        }
+
+        constexpr const char * const MemoryControllerErrorTypes[8] = {
+            "RSVD",
+            "Unknown",
+            "DECERR_EMEM",
+            "SECURITY_TRUSTZONE",
+            "SECURITY_CARVEOUT",
+            "Unknown",
+            "INVALID_SMMU_PAGE",
+            "Unknown",
+        };
+
+        class KMemoryControllerInterruptTask : public KInterruptTask {
+            public:
+                constexpr KMemoryControllerInterruptTask() : KInterruptTask() { /* ... */ }
+
+                virtual KInterruptTask *OnInterrupt(s32 interrupt_id) override {
+                    MESOSPHERE_UNUSED(interrupt_id);
+                    return this;
+                }
+
+                virtual void DoTask() override {
+                    #if defined(MESOSPHERE_ENABLE_MEMORY_CONTROLLER_INTERRUPT)
+                    {
+                        /* Clear the interrupt when we're done. */
+                        ON_SCOPE_EXIT { Kernel::GetInterruptManager().ClearInterrupt(KInterruptName_MemoryController); };
+
+                        /* Get and clear the interrupt status. */
+                        u32 int_status, err_status, err_adr;
+                        {
+                            int_status = ReadMcRegister(MC_INTSTATUS);
+                            err_status = ReadMcRegister(MC_ERR_STATUS);
+                            err_adr    = ReadMcRegister(MC_ERR_ADR);
+
+                            WriteMcRegister(MC_INTSTATUS, int_status);
+                        }
+
+                        /* Print the interrupt. */
+                        {
+                            constexpr auto GetBits = [] ALWAYS_INLINE_LAMBDA (u32 value, size_t ofs, size_t count) {
+                                return (value >> ofs) & ((1u << count) - 1);
+                            };
+
+                            constexpr auto GetBit = [GetBits] ALWAYS_INLINE_LAMBDA (u32 value, size_t ofs) {
+                                return (value >> ofs) & 1u;
+                            };
+
+                            MESOSPHERE_RELEASE_LOG("sMMU error interrupt\n");
+                            MESOSPHERE_RELEASE_LOG("    MC_INTSTATUS=%08x\n", int_status);
+                            MESOSPHERE_RELEASE_LOG("        DECERR_GENERALIZED_CARVEOUT=%d\n", GetBit(int_status, 17));
+                            MESOSPHERE_RELEASE_LOG("        DECERR_MTS=%d\n",                  GetBit(int_status, 16));
+                            MESOSPHERE_RELEASE_LOG("        SECERR_SEC=%d\n",                  GetBit(int_status, 13));
+                            MESOSPHERE_RELEASE_LOG("        DECERR_VPR=%d\n",                  GetBit(int_status, 12));
+                            MESOSPHERE_RELEASE_LOG("        INVALID_APB_ASID_UPDATE=%d\n",     GetBit(int_status, 11));
+                            MESOSPHERE_RELEASE_LOG("        INVALID_SMMU_PAGE=%d\n",           GetBit(int_status, 10));
+                            MESOSPHERE_RELEASE_LOG("        ARBITRATION_EMEM=%d\n",            GetBit(int_status,  9));
+                            MESOSPHERE_RELEASE_LOG("        SECURITY_VIOLATION=%d\n",          GetBit(int_status,  8));
+                            MESOSPHERE_RELEASE_LOG("        DECERR_EMEM=%d\n",                 GetBit(int_status,  6));
+                            MESOSPHERE_RELEASE_LOG("    MC_ERRSTATUS=%08x\n", err_status);
+                            MESOSPHERE_RELEASE_LOG("        ERR_TYPE=%d (%s)\n",                  GetBits(err_status, 28, 3), MemoryControllerErrorTypes[GetBits(err_status, 28, 3)]);
+                            MESOSPHERE_RELEASE_LOG("        ERR_INVALID_SMMU_PAGE_READABLE=%d\n", GetBit (err_status, 27));
+                            MESOSPHERE_RELEASE_LOG("        ERR_INVALID_SMMU_PAGE_WRITABLE=%d\n", GetBit (err_status, 26));
+                            MESOSPHERE_RELEASE_LOG("        ERR_INVALID_SMMU_NONSECURE=%d\n",     GetBit (err_status, 25));
+                            MESOSPHERE_RELEASE_LOG("        ERR_ADR_HI=%x\n",                     GetBits(err_status, 20, 2));
+                            MESOSPHERE_RELEASE_LOG("        ERR_SWAP=%d\n",                       GetBit (err_status, 18));
+                            MESOSPHERE_RELEASE_LOG("        ERR_SECURITY=%d %s\n",                GetBit (err_status, 17), GetBit(err_status, 17) ? "SECURE" : "NONSECURE");
+                            MESOSPHERE_RELEASE_LOG("        ERR_RW=%d %s\n",                      GetBit (err_status, 16), GetBit(err_status, 16) ? "WRITE" : "READ");
+                            MESOSPHERE_RELEASE_LOG("        ERR_ADR1=%x\n",                       GetBits(err_status, 12, 3));
+                            MESOSPHERE_RELEASE_LOG("        ERR_ID=%d %s\n",                      GetBits(err_status,  0, 8), GetMemoryControllerClientName(GetBits(err_status,  0, 8)));
+                            MESOSPHERE_RELEASE_LOG("    MC_ERRADR=%08x\n", err_adr);
+                            MESOSPHERE_RELEASE_LOG("        ERR_ADR=%lx\n", (static_cast<u64>(GetBits(err_status, 20, 2)) << 32) | static_cast<u64>(err_adr));
+                            MESOSPHERE_RELEASE_LOG("\n");
+                        }
+                    }
+                    #endif
+                }
+        };
+
+        /* Interrupt task global. */
+        constinit KMemoryControllerInterruptTask g_mc_interrupt_task;
+
+        /* Memory controller utilities. */
+        ALWAYS_INLINE void SmmuSynchronizationBarrier() {
             ReadMcRegister(MC_SMMU_CONFIG);
         }
 
-        void InvalidatePtc() {
+        ALWAYS_INLINE void InvalidatePtc() {
             WriteMcRegister(MC_SMMU_PTC_FLUSH_0, 0);
         }
 
-        void InvalidatePtc(KPhysicalAddress address) {
+        ALWAYS_INLINE void InvalidatePtc(KPhysicalAddress address) {
             WriteMcRegister(MC_SMMU_PTC_FLUSH_1, (static_cast<u64>(GetInteger(address)) >> 32));
             WriteMcRegister(MC_SMMU_PTC_FLUSH_0, (GetInteger(address) & 0xFFFFFFF0u) | 1u);
         }
@@ -372,15 +606,15 @@ namespace ams::kern::board::nintendo::nx {
             return ((match_asid ? 1u : 0u) << 31) | ((asid & 0x7F) << 24) | (((address & 0xFFC00000u) >> DevicePageBits)) | (match);
         }
 
-        void InvalidateTlb() {
+        ALWAYS_INLINE void InvalidateTlb() {
             return WriteMcRegister(MC_SMMU_TLB_FLUSH, EncodeTlbFlushValue(false, 0, 0, TlbFlushVaMatch_All));
         }
 
-        void InvalidateTlb(u8 asid) {
+        ALWAYS_INLINE void InvalidateTlb(u8 asid) {
             return WriteMcRegister(MC_SMMU_TLB_FLUSH, EncodeTlbFlushValue(true, asid, 0, TlbFlushVaMatch_All));
         }
 
-        void InvalidateTlbSection(u8 asid, KDeviceVirtualAddress address) {
+        ALWAYS_INLINE void InvalidateTlbSection(u8 asid, KDeviceVirtualAddress address) {
             return WriteMcRegister(MC_SMMU_TLB_FLUSH, EncodeTlbFlushValue(true, asid, address, TlbFlushVaMatch_Section));
         }
 
@@ -405,7 +639,7 @@ namespace ams::kern::board::nintendo::nx {
 
     void KDevicePageTable::Initialize() {
         /* Set the memory controller register address. */
-        g_memory_controller_address = KMemoryLayout::GetMemoryControllerRegion().GetAddress();
+        g_memory_controller_address = KMemoryLayout::GetDevicePhysicalAddress(KMemoryRegionType_MemoryController);
 
         /* Allocate a page to use as a reserved/no device table. */
         const KVirtualAddress table_virt_addr = Kernel::GetPageTableManager().Allocate();
@@ -452,11 +686,23 @@ namespace ams::kern::board::nintendo::nx {
         /* Clear int status. */
         WriteMcRegister(MC_INTSTATUS, ReadMcRegister(MC_INTSTATUS));
 
+        /* If we're setting an interrupt handler, unmask all interrupts. */
+        #if defined(MESOSPHERE_ENABLE_MEMORY_CONTROLLER_INTERRUPT)
+        {
+            WriteMcRegister(MC_INTMASK, 0x33D40);
+        }
+        #endif
+
         /* Enable the SMMU */
         WriteMcRegister(MC_SMMU_CONFIG, 1);
         SmmuSynchronizationBarrier();
 
-        /* TODO: Install interrupt handler. */
+        /* Install interrupt handler. */
+        #if defined(MESOSPHERE_ENABLE_MEMORY_CONTROLLER_INTERRUPT)
+        {
+            Kernel::GetInterruptManager().BindHandler(std::addressof(g_mc_interrupt_task), KInterruptName_MemoryController, GetCurrentCoreId(), KInterruptController::PriorityLevel_High, true, true);
+        }
+        #endif
     }
 
     void KDevicePageTable::Lock() {
@@ -530,14 +776,14 @@ namespace ams::kern::board::nintendo::nx {
         /* Clear the tables. */
         static_assert(TableCount == (1ul << DeviceVirtualAddressBits) / DeviceRegionSize);
         for (size_t i = 0; i < TableCount; ++i) {
-            this->tables[i] = Null<KVirtualAddress>;
+            m_tables[i] = Null<KVirtualAddress>;
         }
 
         /* Ensure that we clean up the tables on failure. */
         auto table_guard = SCOPE_GUARD {
             for (size_t i = start_index; i <= end_index; ++i) {
-                if (this->tables[i] != Null<KVirtualAddress> && ptm.Close(this->tables[i], 1)) {
-                    ptm.Free(this->tables[i]);
+                if (m_tables[i] != Null<KVirtualAddress> && ptm.Close(m_tables[i], 1)) {
+                    ptm.Free(m_tables[i]);
                 }
             }
         };
@@ -551,32 +797,32 @@ namespace ams::kern::board::nintendo::nx {
 
             ptm.Open(table_vaddr, 1);
             cpu::StoreDataCache(GetVoidPointer(table_vaddr), PageDirectorySize);
-            this->tables[i] = table_vaddr;
+            m_tables[i] = table_vaddr;
         }
 
         /* Clear asids. */
         for (size_t i = 0; i < TableCount; ++i) {
-            this->table_asids[i] = g_reserved_asid;
+            m_table_asids[i] = g_reserved_asid;
         }
 
         /* Reserve asids for the tables. */
-        R_TRY(g_asid_manager.Reserve(std::addressof(this->table_asids[start_index]), end_index - start_index + 1));
+        R_TRY(g_asid_manager.Reserve(std::addressof(m_table_asids[start_index]), end_index - start_index + 1));
 
         /* Associate tables with asids. */
         for (size_t i = start_index; i <= end_index; ++i) {
-            SetTable(this->table_asids[i], GetPageTablePhysicalAddress(this->tables[i]));
+            SetTable(m_table_asids[i], GetPageTablePhysicalAddress(m_tables[i]));
         }
 
         /* Set member variables. */
-        this->attached_device = 0;
-        this->attached_value  = (1u << 31) | this->table_asids[0];
-        this->detached_value  = (1u << 31) | g_reserved_asid;
+        m_attached_device = 0;
+        m_attached_value  = (1u << 31) | m_table_asids[0];
+        m_detached_value  = (1u << 31) | g_reserved_asid;
 
-        this->hs_attached_value = (1u << 31);
-        this->hs_detached_value = (1u << 31);
+        m_hs_attached_value = (1u << 31);
+        m_hs_detached_value = (1u << 31);
         for (size_t i = 0; i < TableCount; ++i) {
-            this->hs_attached_value |= (this->table_asids[i] << (i * BITSIZEOF(u8)));
-            this->hs_detached_value |= (g_reserved_asid      << (i * BITSIZEOF(u8)));
+            m_hs_attached_value |= (m_table_asids[i] << (i * BITSIZEOF(u8)));
+            m_hs_detached_value |= (g_reserved_asid      << (i * BITSIZEOF(u8)));
         }
 
         /* We succeeded. */
@@ -593,8 +839,8 @@ namespace ams::kern::board::nintendo::nx {
             KScopedLightLock lk(g_lock);
             for (size_t i = 0; i < ams::svc::DeviceName_Count; ++i) {
                 const auto device_name = static_cast<ams::svc::DeviceName>(i);
-                if ((this->attached_device & (1ul << device_name)) != 0) {
-                    WriteMcRegister(GetDeviceAsidRegisterOffset(device_name), IsHsSupported(device_name) ? this->hs_detached_value : this->detached_value);
+                if ((m_attached_device & (1ul << device_name)) != 0) {
+                    WriteMcRegister(GetDeviceAsidRegisterOffset(device_name), IsHsSupported(device_name) ? m_hs_detached_value : m_detached_value);
                     SmmuSynchronizationBarrier();
                 }
             }
@@ -605,12 +851,12 @@ namespace ams::kern::board::nintendo::nx {
 
         /* Release all asids. */
         for (size_t i = 0; i < TableCount; ++i) {
-            if (this->table_asids[i] != g_reserved_asid) {
+            if (m_table_asids[i] != g_reserved_asid) {
                 /* Set the table to the reserved table. */
-                SetTable(this->table_asids[i], g_reserved_table_phys_addr);
+                SetTable(m_table_asids[i], g_reserved_table_phys_addr);
 
                 /* Close the table. */
-                const KVirtualAddress table_vaddr = this->tables[i];
+                const KVirtualAddress table_vaddr = m_tables[i];
                 MESOSPHERE_ASSERT(ptm.GetRefCount(table_vaddr) == 1);
                 MESOSPHERE_ABORT_UNLESS(ptm.Close(table_vaddr, 1));
 
@@ -618,7 +864,7 @@ namespace ams::kern::board::nintendo::nx {
                 ptm.Free(table_vaddr);
 
                 /* Release the asid. */
-                g_asid_manager.Release(this->table_asids[i]);
+                g_asid_manager.Release(m_table_asids[i]);
             }
         }
     }
@@ -629,7 +875,7 @@ namespace ams::kern::board::nintendo::nx {
         R_UNLESS(device_name < ams::svc::DeviceName_Count, svc::ResultNotFound());
 
         /* Check that the device isn't already attached. */
-        R_UNLESS((this->attached_device & (1ul << device_name)) == 0, svc::ResultBusy());
+        R_UNLESS((m_attached_device & (1ul << device_name)) == 0, svc::ResultBusy());
 
         /* Validate that the space is allowed for the device. */
         const size_t end_index = (space_address + space_size - 1) / DeviceRegionSize;
@@ -643,8 +889,8 @@ namespace ams::kern::board::nintendo::nx {
         R_UNLESS(reg_offset >= 0, svc::ResultNotFound());
 
         /* Determine the old/new values. */
-        const u32 old_val = IsHsSupported(device_name) ? this->hs_detached_value : this->detached_value;
-        const u32 new_val = IsHsSupported(device_name) ? this->hs_attached_value : this->attached_value;
+        const u32 old_val = IsHsSupported(device_name) ? m_hs_detached_value : m_detached_value;
+        const u32 new_val = IsHsSupported(device_name) ? m_hs_attached_value : m_attached_value;
 
         /* Attach the device. */
         {
@@ -666,7 +912,7 @@ namespace ams::kern::board::nintendo::nx {
         }
 
         /* Mark the device as attached. */
-        this->attached_device |= (1ul << device_name);
+        m_attached_device |= (1ul << device_name);
 
         return ResultSuccess();
     }
@@ -677,15 +923,15 @@ namespace ams::kern::board::nintendo::nx {
         R_UNLESS(device_name < ams::svc::DeviceName_Count, svc::ResultNotFound());
 
         /* Check that the device is already attached. */
-        R_UNLESS((this->attached_device & (1ul << device_name)) != 0, svc::ResultInvalidState());
+        R_UNLESS((m_attached_device & (1ul << device_name)) != 0, svc::ResultInvalidState());
 
         /* Get the device asid register offset. */
         const int reg_offset = GetDeviceAsidRegisterOffset(device_name);
         R_UNLESS(reg_offset >= 0, svc::ResultNotFound());
 
         /* Determine the old/new values. */
-        const u32 old_val = IsHsSupported(device_name) ? this->hs_attached_value : this->attached_value;
-        const u32 new_val = IsHsSupported(device_name) ? this->hs_detached_value : this->detached_value;
+        const u32 old_val = IsHsSupported(device_name) ? m_hs_attached_value : m_attached_value;
+        const u32 new_val = IsHsSupported(device_name) ? m_hs_detached_value : m_detached_value;
 
         /* When not building for debug, the old value might be unused. */
         AMS_UNUSED(old_val);
@@ -706,7 +952,7 @@ namespace ams::kern::board::nintendo::nx {
         }
 
         /* Mark the device as detached. */
-        this->attached_device &= ~(1ul << device_name);
+        m_attached_device &= ~(1ul << device_name);
 
         return ResultSuccess();
     }
@@ -722,7 +968,7 @@ namespace ams::kern::board::nintendo::nx {
             const size_t l1_index = (address % DeviceRegionSize)    / DeviceLargePageSize;
             const size_t l2_index = (address % DeviceLargePageSize) / DevicePageSize;
 
-            const PageDirectoryEntry *l1 = GetPointer<PageDirectoryEntry>(this->tables[l0_index]);
+            const PageDirectoryEntry *l1 = GetPointer<PageDirectoryEntry>(m_tables[l0_index]);
             if (l1 == nullptr || !l1[l1_index].IsValid()) {
                 const size_t remaining_in_entry = (PageTableSize / sizeof(PageTableEntry)) - l2_index;
                 const size_t map_count = std::min<size_t>(remaining_in_entry, remaining / DevicePageSize);
@@ -777,7 +1023,7 @@ namespace ams::kern::board::nintendo::nx {
             const size_t l2_index = (address % DeviceLargePageSize) / DevicePageSize;
 
             /* Get and validate l1. */
-            PageDirectoryEntry *l1 = GetPointer<PageDirectoryEntry>(this->tables[l0_index]);
+            PageDirectoryEntry *l1 = GetPointer<PageDirectoryEntry>(m_tables[l0_index]);
             MESOSPHERE_ASSERT(l1 != nullptr);
 
             /* Setup an l1 table/entry, if needed. */
@@ -793,7 +1039,7 @@ namespace ams::kern::board::nintendo::nx {
 
                     /* Synchronize. */
                     InvalidatePtc(GetPageTablePhysicalAddress(KVirtualAddress(std::addressof(l1[l1_index]))));
-                    InvalidateTlbSection(this->table_asids[l0_index], address);
+                    InvalidateTlbSection(m_table_asids[l0_index], address);
                     SmmuSynchronizationBarrier();
 
                     /* Open references to the pages. */
@@ -820,7 +1066,7 @@ namespace ams::kern::board::nintendo::nx {
 
                     /* Synchronize. */
                     InvalidatePtc(GetPageTablePhysicalAddress(KVirtualAddress(std::addressof(l1[l1_index]))));
-                    InvalidateTlbSection(this->table_asids[l0_index], address);
+                    InvalidateTlbSection(m_table_asids[l0_index], address);
                     SmmuSynchronizationBarrier();
 
                     /* Increment the page table count. */
@@ -854,7 +1100,7 @@ namespace ams::kern::board::nintendo::nx {
                 }
 
                 /* Synchronize. */
-                InvalidateTlbSection(this->table_asids[l0_index], address);
+                InvalidateTlbSection(m_table_asids[l0_index], address);
                 SmmuSynchronizationBarrier();
 
                 /* Open references to the pages. */
@@ -917,6 +1163,7 @@ namespace ams::kern::board::nintendo::nx {
     }
 
     void KDevicePageTable::UnmapImpl(KDeviceVirtualAddress address, u64 size, bool force) {
+        MESOSPHERE_UNUSED(force);
         MESOSPHERE_ASSERT((address & ~DeviceVirtualAddressMask) == 0);
         MESOSPHERE_ASSERT(((address + size - 1) & ~DeviceVirtualAddressMask) == 0);
 
@@ -935,7 +1182,7 @@ namespace ams::kern::board::nintendo::nx {
             const size_t l2_index = (address % DeviceLargePageSize) / DevicePageSize;
 
             /* Get and validate l1. */
-            PageDirectoryEntry *l1 = GetPointer<PageDirectoryEntry>(this->tables[l0_index]);
+            PageDirectoryEntry *l1 = GetPointer<PageDirectoryEntry>(m_tables[l0_index]);
 
             /* Check if there's nothing mapped at l1. */
             if (l1 == nullptr || !l1[l1_index].IsValid()) {
@@ -996,7 +1243,7 @@ namespace ams::kern::board::nintendo::nx {
 
                     /* Synchronize. */
                     InvalidatePtc(GetPageTablePhysicalAddress(KVirtualAddress(std::addressof(l1[l1_index]))));
-                    InvalidateTlbSection(this->table_asids[l0_index], address);
+                    InvalidateTlbSection(m_table_asids[l0_index], address);
                     SmmuSynchronizationBarrier();
 
                     /* We invalidated the tlb. */
@@ -1008,7 +1255,7 @@ namespace ams::kern::board::nintendo::nx {
 
                 /* Invalidate the tlb if we haven't already. */
                 if (!invalidated_tlb) {
-                    InvalidateTlbSection(this->table_asids[l0_index], address);
+                    InvalidateTlbSection(m_table_asids[l0_index], address);
                     SmmuSynchronizationBarrier();
                 }
 
@@ -1029,7 +1276,7 @@ namespace ams::kern::board::nintendo::nx {
 
                 /* Synchronize. */
                 InvalidatePtc(GetPageTablePhysicalAddress(KVirtualAddress(std::addressof(l1[l1_index]))));
-                InvalidateTlbSection(this->table_asids[l0_index], address);
+                InvalidateTlbSection(m_table_asids[l0_index], address);
                 SmmuSynchronizationBarrier();
 
                 /* Close references. */
@@ -1059,7 +1306,7 @@ namespace ams::kern::board::nintendo::nx {
             const size_t l2_index = (address % DeviceLargePageSize) / DevicePageSize;
 
             /* Get and validate l1. */
-            const PageDirectoryEntry *l1 = GetPointer<PageDirectoryEntry>(this->tables[l0_index]);
+            const PageDirectoryEntry *l1 = GetPointer<PageDirectoryEntry>(m_tables[l0_index]);
             R_UNLESS(l1 != nullptr,          svc::ResultInvalidCurrentMemory());
             R_UNLESS(l1[l1_index].IsValid(), svc::ResultInvalidCurrentMemory());
 
